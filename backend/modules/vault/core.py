@@ -2,7 +2,7 @@ import hashlib
 import json
 from typing import Any, Dict
 from datetime import datetime
-from backend.modules.infrastructure.schemas import Evidence
+from modules.infrastructure.schemas import Evidence
 
 class ImmutableVault:
     def __init__(self):

@@ -1,5 +1,5 @@
 from typing import List, Dict, Any
-from backend.modules.infrastructure.schemas import Case, Evidence
+from modules.infrastructure.schemas import Case, Evidence
 
 class CaseSummarizer:
     def __init__(self):

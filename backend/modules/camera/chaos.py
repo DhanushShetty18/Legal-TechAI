@@ -11,7 +11,7 @@ def inject_malicious_stream():
     
     malicious_frame = b"HEADER_INFO_INJECTED_STATIC_STREAM_FOOTER"
     
-    from backend.modules.camera.core import CameraModule
+    from modules.camera.core import CameraModule
     cam = CameraModule()
     
     try:

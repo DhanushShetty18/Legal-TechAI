@@ -11,7 +11,7 @@ def simulate_offline_resilience():
     # Enable Offline Mode
     os.environ["JUDICIARY_NETWORK_STATUS"] = "OFFLINE"
     
-    from backend.modules.vault.core import ImmutableVault
+    from modules.vault.core import ImmutableVault
     vault = ImmutableVault()
     
     mock_doc = {"case_id": "CASE-2026-X", "content": "Test Verdict"}

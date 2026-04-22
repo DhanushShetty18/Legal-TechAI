@@ -1,6 +1,6 @@
 from datetime import datetime
 import random
-from backend.modules.infrastructure.schemas import Evidence
+from modules.infrastructure.schemas import Evidence
 
 class CameraModule:
     def __init__(self):

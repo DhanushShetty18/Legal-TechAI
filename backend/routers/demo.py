@@ -5,10 +5,10 @@ import json
 import base64
 
 # Import our modules
-from backend.modules.camera.core import CameraModule
-from backend.modules.summarizer.core import CaseSummarizer
-from backend.modules.vault.core import ImmutableVault
-from backend.modules.infrastructure.schemas import Evidence
+from modules.camera.core import CameraModule
+from modules.summarizer.core import CaseSummarizer
+from modules.vault.core import ImmutableVault
+from modules.infrastructure.schemas import Evidence
 
 router = APIRouter(
     prefix="/demo",

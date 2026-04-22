@@ -13,7 +13,7 @@ def inject_contradictory_data():
         ]
     }
     
-    from backend.modules.summarizer.core import CaseSummarizer
+    from modules.summarizer.core import CaseSummarizer
     summarizer = CaseSummarizer()
     
     result = summarizer.summarize_case(mock_case_data)

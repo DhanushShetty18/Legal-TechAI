@@ -1,7 +1,7 @@
 import time
 import hashlib
 from typing import Dict, Any, Optional
-from backend.modules.infrastructure.schemas import Identity, Evidence
+from modules.infrastructure.schemas import Identity, Evidence
 
 def simulate_govt_id_verification(govt_id_number: str, full_name: str) -> bool:
     """
