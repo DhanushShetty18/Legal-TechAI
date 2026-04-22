@@ -19,13 +19,14 @@ app = FastAPI(
     version="0.1.0",
 )
 
-from routers import demo, ai, rag
+from routers import demo, ai, rag, inconsistency
 import ingestion
 
 app.include_router(demo.router)
 app.include_router(ai.router)
 app.include_router(ingestion.router)
 app.include_router(rag.router)
+app.include_router(inconsistency.router)
 
 # Configure CORS
 origins = [

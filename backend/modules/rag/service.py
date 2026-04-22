@@ -4,6 +4,9 @@ import chromadb
 import google.generativeai as genai
 from chromadb.config import Settings
 from schemas import SectionInput, QueryResponse
+from dotenv import load_dotenv
+
+load_dotenv()
 
 # Configure Gemini
 api_key = os.getenv("GEMINI_API_KEY")
