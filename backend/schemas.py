@@ -57,3 +57,19 @@ class User(UserBase):
 
     class Config:
         orm_mode = True
+
+# --- RAG Schemas ---
+class SectionInput(BaseModel):
+    section_number: str
+    act_name: str
+    section_title: str
+    text: str
+
+class QueryRequest(BaseModel):
+    question: str
+
+class QueryResponse(BaseModel):
+    answer: str
+    citations: List[str]
+    hallucination_flags: List[str]
+    retrieved_sections: List[dict]

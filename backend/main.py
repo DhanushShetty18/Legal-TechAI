@@ -19,11 +19,13 @@ app = FastAPI(
     version="0.1.0",
 )
 
-from routers import demo
+from routers import demo, ai, rag
 import ingestion
 
 app.include_router(demo.router)
+app.include_router(ai.router)
 app.include_router(ingestion.router)
+app.include_router(rag.router)
 
 # Configure CORS
 origins = [
@@ -94,29 +96,18 @@ def get_case_summary(case_id: int, db: Session = Depends(get_db)):
     if not case:
         raise HTTPException(status_code=404, detail="Case not found")
     
-    # Mock AI Summary Logic (Rule-Based for MVP)
-    # In production, this would call Gemini API with case documents
+    from modules.ai.gemini_integration import summarize_legal_document
     
-    summary_text = f"This is a {case.case_type} case filed on {case.created_at.strftime('%Y-%m-%d')}. "
-    if case.description:
-        summary_text += f"The plaintiff alleges: {case.description[:100]}... "
-    summary_text += "The system has analyzed 2 key documents."
-
-    recommendation = "Judicial Review Recommended"
-    if "urgent" in (case.description or "").lower():
-        recommendation = "High Priority: Expedited Hearing Suggested"
-
-    return {
-        "case_number": case.case_number,
-        "summary": summary_text,
-        "key_dates": [
-            {"event": "Case Filed", "date": case.created_at.strftime('%Y-%m-%d')},
-            {"event": "Evidence Submitted", "date": case.created_at.strftime('%Y-%m-%d')},
-            {"event": "Estimated Hearing", "date": "Provisional scheduled in 14 days"}
-        ],
-        "recommendation": recommendation,
-        "citations": ["IPC Section 420 (Cheating)", "Evidence Act Section 65B"]
-    }
+    # Construct case text
+    case_title = case.title or "Untitled Case"
+    case_description = case.description or "No description provided."
+    case_text = f"Title: {case_title}\n\nDescription: {case_description}"
+    
+    try:
+        summary_result = summarize_legal_document(case_text)
+        return summary_result
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"AI Summarization failed: {str(e)}")
 
 @app.post("/cases/", response_model=schemas.Case)
 def create_case(case: schemas.CaseCreate, user_id: int, db: Session = Depends(get_db)):
