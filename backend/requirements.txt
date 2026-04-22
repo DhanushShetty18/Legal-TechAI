@@ -1,0 +1,12 @@
+fastapi
+uvicorn[standard]
+sqlalchemy
+python-multipart
+google-generativeai
+PyMuPDF
+pdfplumber
+python-dotenv
+pydantic
+httpx
+aiofiles
+chromadb
