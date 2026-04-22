@@ -7,7 +7,7 @@ import os
 import hashlib
 import sys
 
-from . import crud, models, schemas
+import crud, models, schemas
 from .database import SessionLocal, engine
 
 # Create the database tables
@@ -66,7 +66,7 @@ def verify_user_identity(user_id: int, govt_id: str = Form(...), db: Session = D
         raise HTTPException(status_code=404, detail="User not found")
         
     # Simulate verification
-    from . import verification
+    import verification
 
     is_valid = verification.simulate_govt_id_verification(govt_id, db_user.full_name)
     
