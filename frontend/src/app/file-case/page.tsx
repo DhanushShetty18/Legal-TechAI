@@ -90,7 +90,7 @@ export default function FileCasePage() {
             const USER_ID = 1; // Hardcoded for MVP
 
             // Create Case
-            const caseRes = await fetch("http://localhost:8000/cases/?user_id=" + USER_ID, {
+            const caseRes = await fetch("https://legal-techai.onrender.com/cases/?user_id=" + USER_ID, {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({
@@ -111,7 +111,7 @@ export default function FileCasePage() {
             formData.append("uploader_id", USER_ID.toString());
             formData.append("capture_method", "camera");
 
-            const docRes = await fetch("http://localhost:8000/documents/", {
+            const docRes = await fetch("https://legal-techai.onrender.com/documents/", {
                 method: "POST",
                 body: formData
             });

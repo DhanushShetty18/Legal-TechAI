@@ -23,7 +23,7 @@ export default function JudgeDashboard() {
         try {
             // We usually use ID, but for simpler manual testing let's assume user knows database ID or we search
             // For this demo, let's just try ID 1 if they type 1, etc.
-            const res = await fetch(`http://localhost:8000/cases/${caseId}/summary`);
+            const res = await fetch(`https://legal-techai.onrender.com/cases/${caseId}/summary`);
             if (!res.ok) throw new Error("Case failed");
             const data = await res.json();
             setSummary(data);

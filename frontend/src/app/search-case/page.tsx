@@ -29,7 +29,7 @@ export default function SearchCasePage() {
         setResult(null);
 
         try {
-            const res = await fetch(`http://localhost:8000/cases/search?q=${query}`);
+            const res = await fetch(`https://legal-techai.onrender.com/cases/search?q=${query}`);
             if (!res.ok) {
                 if (res.status === 404) throw new Error("Case not found");
                 throw new Error("Search failed");

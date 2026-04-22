@@ -82,7 +82,7 @@ function CameraDemo() {
         formData.append("file", content, "stream.bin");
 
         try {
-            const res = await fetch("http://localhost:8000/demo/camera/analyze", {
+            const res = await fetch("https://legal-techai.onrender.com/demo/camera/analyze", {
                 method: "POST",
                 body: formData,
             });
@@ -136,7 +136,7 @@ function SummarizerDemo() {
 
     const runAudit = async () => {
         try {
-            const res = await fetch("http://localhost:8000/demo/summarizer/audit", {
+            const res = await fetch("https://legal-techai.onrender.com/demo/summarizer/audit", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify(contradictoryData),
@@ -186,7 +186,7 @@ function VaultDemo() {
         const newState = !offline;
         setOffline(newState);
         try {
-            await fetch(`http://localhost:8000/demo/vault/toggle-offline?offline=${newState}`, { method: "POST" });
+            await fetch(`https://legal-techai.onrender.com/demo/vault/toggle-offline?offline=${newState}`, { method: "POST" });
             addLog(`Network Switched to: ${newState ? "OFFLINE" : "ONLINE"}`);
         } catch (e) {
             addLog("Error toggling network.");
@@ -217,7 +217,7 @@ function VaultDemo() {
 
         try {
             addLog("Archiving Document...");
-            const res = await fetch("http://localhost:8000/demo/vault/archive", {
+            const res = await fetch("https://legal-techai.onrender.com/demo/vault/archive", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({

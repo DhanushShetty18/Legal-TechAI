@@ -30,7 +30,7 @@ export default function ProfilePage() {
             const formData = new FormData();
             formData.append("govt_id", govtId);
 
-            const res = await fetch(`http://localhost:8000/users/${userId}/verify`, {
+            const res = await fetch(`https://legal-techai.onrender.com/users/${userId}/verify`, {
                 method: "POST",
                 body: formData
             });
