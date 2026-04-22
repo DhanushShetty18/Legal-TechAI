@@ -20,7 +20,10 @@ app = FastAPI(
 )
 
 from routers import demo
+import ingestion
+
 app.include_router(demo.router)
+app.include_router(ingestion.router)
 
 # Configure CORS
 origins = [
