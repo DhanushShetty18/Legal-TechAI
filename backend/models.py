@@ -2,7 +2,7 @@ from sqlalchemy import Column, Integer, String, Boolean, DateTime, ForeignKey, E
 from sqlalchemy.orm import relationship
 from datetime import datetime
 import enum
-from .database import Base
+from database import Base
 
 class UserRole(str, enum.Enum):
     CITIZEN = "citizen"

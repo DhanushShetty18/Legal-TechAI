@@ -8,7 +8,7 @@ import hashlib
 import sys
 
 import crud, models, schemas
-from .database import SessionLocal, engine
+from database import SessionLocal, engine
 
 # Create the database tables
 models.Base.metadata.create_all(bind=engine)
@@ -19,7 +19,7 @@ app = FastAPI(
     version="0.1.0",
 )
 
-from .routers import demo
+from routers import demo
 app.include_router(demo.router)
 
 # Configure CORS
