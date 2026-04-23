@@ -4,11 +4,8 @@ from datetime import datetime
 import enum
 from database import Base
 
-class UserRole(str, enum.Enum):
-    CITIZEN = "citizen"
+class UserType(str, enum.Enum):
     LAWYER = "lawyer"
-    JUDGE = "judge"
-    CLERK = "clerk"
     ADMIN = "admin"
 
 class DocumentCaptureMethod(str, enum.Enum):
@@ -22,7 +19,8 @@ class User(Base):
     full_name = Column(String, index=True)
     email = Column(String, unique=True, index=True)
     hashed_password = Column(String)
-    role = Column(String, default=UserRole.CITIZEN)
+    bar_council_number = Column(String, nullable=True)
+    user_type = Column(String, default=UserType.LAWYER)
     is_verified_identity = Column(Boolean, default=False)
     created_at = Column(DateTime, default=datetime.utcnow)
 
@@ -65,6 +63,11 @@ class Document(Base):
     
     version = Column(Integer, default=1)
     created_at = Column(DateTime, default=datetime.utcnow)
+    
+    # New fields
+    filename = Column(String)
+    doc_type = Column(String)
+    uploaded_at = Column(DateTime, default=datetime.utcnow)
 
     case = relationship("Case", back_populates="documents")
     uploader = relationship("User", back_populates="documents")
@@ -78,10 +81,27 @@ class AuditLog(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     user_id = Column(Integer, ForeignKey("users.id"))
-    action = Column(String) # CREATE, VIEW, VERIFY, UPDATE
-    target_type = Column(String) # DOCUMENT, CASE
-    target_id = Column(Integer)
-    details = Column(Text) # JSON details
+    action = Column(String)
+    resource_type = Column(String)
+    resource_id = Column(Integer)
     timestamp = Column(DateTime, default=datetime.utcnow)
+    ip_address = Column(String)
+    success = Column(Boolean)
 
     user = relationship("User", back_populates="audit_logs")
+
+class Inconsistency(Base):
+    __tablename__ = "inconsistencies"
+
+    id = Column(Integer, primary_key=True, index=True)
+    case_id = Column(Integer, ForeignKey("cases.id"))
+    doc_a_id = Column(Integer, ForeignKey("documents.id"))
+    doc_b_id = Column(Integer, ForeignKey("documents.id"))
+    contradiction_type = Column(String)
+    severity = Column(String)
+    explanation = Column(Text)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+    case = relationship("Case")
+    doc_a = relationship("Document", foreign_keys=[doc_a_id])
+    doc_b = relationship("Document", foreign_keys=[doc_b_id])

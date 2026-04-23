@@ -1,6 +1,6 @@
 
 from pydantic import BaseModel
-from typing import List, Optional
+from typing import List, Optional, Any
 from datetime import datetime
 
 class DocumentBase(BaseModel):
@@ -19,6 +19,9 @@ class Document(DocumentBase):
     is_verified: bool
     verification_status: str
     created_at: datetime
+    filename: Optional[str] = None
+    doc_type: Optional[str] = None
+    uploaded_at: Optional[datetime] = None
 
     class Config:
         orm_mode = True
@@ -42,16 +45,39 @@ class Case(CaseBase):
     class Config:
         orm_mode = True
 
-class UserBase(BaseModel):
+class UserCreate(BaseModel):
     email: str
+    password: str
     full_name: str
-    role: str
+    bar_council_number: Optional[str] = None
+    user_type: str
 
-class UserCreate(UserBase):
+class UserResponse(BaseModel):
+    user_id: int
+    email: str
+    user_type: str
+
+    class Config:
+        orm_mode = True
+
+class UserLogin(BaseModel):
+    email: str
     password: str
 
-class User(UserBase):
+class Token(BaseModel):
+    access_token: str
+    token_type: str
+    expires_in: int
+
+class TokenData(BaseModel):
+    email: Optional[str] = None
+
+class User(BaseModel):
     id: int
+    email: str
+    full_name: str
+    user_type: str
+    bar_council_number: Optional[str] = None
     is_verified_identity: bool
     created_at: datetime
 
@@ -73,3 +99,28 @@ class QueryResponse(BaseModel):
     citations: List[str]
     hallucination_flags: List[str]
     retrieved_sections: List[dict]
+
+# --- Standard Response ---
+class StandardResponse(BaseModel):
+    success: bool
+    data: Any = None
+    error: Optional[str] = None
+
+# --- Inconsistency Schemas ---
+class InconsistencyBase(BaseModel):
+    case_id: int
+    doc_a_id: int
+    doc_b_id: int
+    contradiction_type: str
+    severity: str
+    explanation: str
+
+class InconsistencyCreate(InconsistencyBase):
+    pass
+
+class Inconsistency(InconsistencyBase):
+    id: int
+    created_at: datetime
+
+    class Config:
+        orm_mode = True

@@ -10,3 +10,6 @@ pydantic
 httpx
 aiofiles
 chromadb
+python-jose[cryptography]
+passlib[bcrypt]
+bcrypt

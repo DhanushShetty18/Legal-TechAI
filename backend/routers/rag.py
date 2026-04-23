@@ -1,22 +1,19 @@
-from fastapi import APIRouter, HTTPException
-from schemas import SectionInput, QueryRequest, QueryResponse
-from modules.rag.service import add_legal_section, query_rag_system
+from fastapi import APIRouter
+from schemas import SectionInput, QueryRequest, StandardResponse
+from modules.embedder import add_legal_section, query_rag_system
 
 router = APIRouter(
     prefix="/rag",
     tags=["RAG Pipeline"]
 )
 
-@router.post("/add-section")
+@router.post("/add-section", response_model=StandardResponse)
 def add_section(section: SectionInput):
-    try:
-        return add_legal_section(section)
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+    result = add_legal_section(section)
+    return StandardResponse(success=True, data=result)
 
-@router.post("/query", response_model=QueryResponse)
+@router.post("/query", response_model=StandardResponse)
 def query(request: QueryRequest):
-    try:
-        return query_rag_system(request.question)
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+    result = query_rag_system(request.question)
+    # query_rag_system returns QueryResponse object. We convert it to dict.
+    return StandardResponse(success=True, data=result.dict())

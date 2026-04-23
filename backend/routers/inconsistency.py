@@ -1,53 +1,33 @@
-from fastapi import APIRouter, File, UploadFile, HTTPException
-from typing import List
-import fitz  # PyMuPDF
-from modules.inconsistency.core import InconsistencyEngine
-from modules.inconsistency.schemas import InconsistencyReport
+from fastapi import APIRouter
+from pydantic import BaseModel
+from typing import List, Dict, Any
+from schemas import StandardResponse
+from modules.gemini import extract_claims, answer_legal_question
 
 router = APIRouter(
     prefix="/inconsistency",
-    tags=["inconsistency-detection"],
+    tags=["Inconsistency Detection"]
 )
 
-engine = InconsistencyEngine()
+class ExtractClaimsRequest(BaseModel):
+    text: str
 
-@router.post("/detect-inconsistencies", response_model=InconsistencyReport)
-async def detect_inconsistencies(files: List[UploadFile] = File(...)):
+class AnswerQuestionRequest(BaseModel):
+    question: str
+    context: str
+
+@router.post("/extract-claims", response_model=StandardResponse)
+async def api_extract_claims(request: ExtractClaimsRequest):
     """
-    Detect factual, temporal, and logical inconsistencies across multiple legal documents.
+    Break document into atomic factual claims.
     """
-    if len(files) < 2:
-        raise HTTPException(status_code=400, detail="At least two documents are required for contradiction detection.")
+    result = extract_claims(request.text)
+    return StandardResponse(success=True, data=result)
 
-    documents_data = []
-
-    for file in files:
-        contents = await file.read()
-        filename = file.filename
-        
-        extracted_text = ""
-        try:
-            if filename.lower().endswith(".pdf"):
-                # Use PyMuPDF
-                doc = fitz.open(stream=contents, filetype="pdf")
-                for page_num in range(len(doc)):
-                    page = doc.load_page(page_num)
-                    page_text = page.get_text()
-                    extracted_text += f"\n[Page {page_num + 1}]\n{page_text}\n"
-            else:
-                # Assume text file
-                extracted_text = f"\n[Page 1]\n{contents.decode('utf-8')}\n"
-        except Exception as e:
-            raise HTTPException(status_code=400, detail=f"Failed to extract text from {filename}: {str(e)}")
-            
-        documents_data.append({
-            "doc_id": filename,
-            "text": extracted_text
-        })
-
-    try:
-        # Run the sequential Gemini pipeline
-        report = engine.process(documents_data)
-        return report
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Pipeline error: {str(e)}")
+@router.post("/answer-question", response_model=StandardResponse)
+async def api_answer_legal_question(request: AnswerQuestionRequest):
+    """
+    Answer a legal question strictly based on the provided context.
+    """
+    result = answer_legal_question(request.question, request.context)
+    return StandardResponse(success=True, data=result)
