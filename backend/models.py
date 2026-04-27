@@ -4,8 +4,11 @@ from datetime import datetime
 import enum
 from database import Base
 
-class UserType(str, enum.Enum):
+class UserRole(str, enum.Enum):
+    CITIZEN = "citizen"
     LAWYER = "lawyer"
+    JUDGE = "judge"
+    CLERK = "clerk"
     ADMIN = "admin"
 
 class DocumentCaptureMethod(str, enum.Enum):
@@ -19,8 +22,7 @@ class User(Base):
     full_name = Column(String, index=True)
     email = Column(String, unique=True, index=True)
     hashed_password = Column(String)
-    bar_council_number = Column(String, nullable=True)
-    user_type = Column(String, default=UserType.LAWYER)
+    role = Column(String, default=UserRole.CITIZEN)
     is_verified_identity = Column(Boolean, default=False)
     created_at = Column(DateTime, default=datetime.utcnow)
 
@@ -81,12 +83,11 @@ class AuditLog(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     user_id = Column(Integer, ForeignKey("users.id"))
-    action = Column(String)
-    resource_type = Column(String)
-    resource_id = Column(Integer)
+    action = Column(String) # CREATE, VIEW, VERIFY, UPDATE
+    target_type = Column(String) # DOCUMENT, CASE
+    target_id = Column(Integer)
+    details = Column(Text) # JSON details
     timestamp = Column(DateTime, default=datetime.utcnow)
-    ip_address = Column(String)
-    success = Column(Boolean)
 
     user = relationship("User", back_populates="audit_logs")
 

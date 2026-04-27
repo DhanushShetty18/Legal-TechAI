@@ -45,39 +45,16 @@ class Case(CaseBase):
     class Config:
         orm_mode = True
 
-class UserCreate(BaseModel):
+class UserBase(BaseModel):
     email: str
-    password: str
     full_name: str
-    bar_council_number: Optional[str] = None
-    user_type: str
+    role: str
 
-class UserResponse(BaseModel):
-    user_id: int
-    email: str
-    user_type: str
-
-    class Config:
-        orm_mode = True
-
-class UserLogin(BaseModel):
-    email: str
+class UserCreate(UserBase):
     password: str
 
-class Token(BaseModel):
-    access_token: str
-    token_type: str
-    expires_in: int
-
-class TokenData(BaseModel):
-    email: Optional[str] = None
-
-class User(BaseModel):
+class User(UserBase):
     id: int
-    email: str
-    full_name: str
-    user_type: str
-    bar_council_number: Optional[str] = None
     is_verified_identity: bool
     created_at: datetime
 
