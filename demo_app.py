@@ -9,7 +9,7 @@ from datetime import datetime
 # Load environment variables
 load_dotenv()
 
-BACKEND_URL = os.environ.get("BACKEND_URL", "http://localhost:8000")
+BACKEND_URL = os.getenv("BACKEND_URL", "https://legal-techai.onrender.com")
 
 # Configure page
 st.set_page_config(

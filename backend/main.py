@@ -29,7 +29,7 @@ app.include_router(demo.router)
 app.include_router(ai.router)
 app.include_router(ingestion.router)
 app.include_router(rag.router)
-app.include_router(inconsistency.router)
+app.include_router(inconsistency.router, prefix="/inconsistency", tags=["inconsistency"])
 app.include_router(ingest.router)
 app.include_router(summarizer.router)
 
