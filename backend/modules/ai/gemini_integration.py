@@ -79,7 +79,7 @@ def summarize_legal_document(text: str) -> Dict[str, Any]:
     """
     
     model = genai.GenerativeModel(
-        model_name="gemini-pro",
+        model_name="gemini-2.0-flash",
         system_instruction=system_prompt
     )
     
@@ -105,7 +105,7 @@ def extract_claims(text: str) -> List[Dict[str, Any]]:
     {text}
     """
     
-    model = genai.GenerativeModel(model_name="gemini-pro")
+    model = genai.GenerativeModel(model_name="gemini-2.0-flash")
     response = model.generate_content(prompt)
     return extract_json(response.text)
 
@@ -129,6 +129,6 @@ def answer_legal_question(question: str, context: str) -> Dict[str, Any]:
     {context}
     """
     
-    model = genai.GenerativeModel(model_name="gemini-pro")
+    model = genai.GenerativeModel(model_name="gemini-2.0-flash")
     response = model.generate_content(prompt)
     return extract_json(response.text)
