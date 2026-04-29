@@ -6,11 +6,13 @@ with Level 2 physical-impossibility reasoning.
 import os
 import json
 import re
+import logging
 from datetime import datetime
 from typing import List, Dict, Any, Optional, Tuple
 
 import pydantic
 import google.generativeai as genai
+from dotenv import load_dotenv
 
 from .schemas import (
     Entity,
@@ -24,10 +26,10 @@ from .schemas import (
     InconsistencyReport,
 )
 
-# ---------------------------------------------------------------------------
-# Gemini configuration
-# ---------------------------------------------------------------------------
-genai.configure(api_key=os.environ.get("GEMINI_API_KEY", ""))
+# Load .env so GEMINI_API_KEY is available
+load_dotenv()
+
+logger = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
 # Known distances for Level 2 physical-impossibility reasoning
@@ -52,12 +54,34 @@ KNOWN_DISTANCES: Dict[frozenset, Tuple[float, float]] = {
 # Average max speed within a single city (km/h)
 CITY_MAX_SPEED_KMH = 50
 
+# ---------------------------------------------------------------------------
+# Lazy Gemini configuration — only runs once, at first use
+# ---------------------------------------------------------------------------
+_gemini_configured = False
+
+
+def _ensure_gemini_configured():
+    """Configure Gemini exactly once. Raises RuntimeError if no API key."""
+    global _gemini_configured
+    if _gemini_configured:
+        return
+    api_key = os.getenv("GEMINI_API_KEY")
+    if not api_key:
+        raise RuntimeError(
+            "GEMINI_API_KEY environment variable is not set. "
+            "Set it in your .env file or Render environment variables."
+        )
+    genai.configure(api_key=api_key)
+    _gemini_configured = True
+    logger.info("Gemini API configured successfully for inconsistency engine.")
+
 
 class InconsistencyEngine:
     """Runs the 4-step sequential Gemini pipeline."""
 
     def __init__(self):
-        self.model = genai.GenerativeModel("gemini-1.5-pro")
+        # Model is created lazily when process() is called
+        self._model = None
 
     # ------------------------------------------------------------------
     # Gemini JSON helper
@@ -66,6 +90,11 @@ class InconsistencyEngine:
         self, prompt: str, schema_class: type[pydantic.BaseModel]
     ) -> pydantic.BaseModel:
         """Call Gemini with JSON mode and validate against *schema_class*."""
+        # Lazy init: configure Gemini and create model on first call
+        if self._model is None:
+            _ensure_gemini_configured()
+            self._model = genai.GenerativeModel("gemini-1.5-pro")
+
         full_prompt = (
             f"{prompt}\n\n"
             "CRITICAL: You MUST output strictly valid JSON.\n"
@@ -75,7 +104,7 @@ class InconsistencyEngine:
             "Just return the raw JSON string."
         )
 
-        response = self.model.generate_content(
+        response = self._model.generate_content(
             full_prompt,
             generation_config=genai.GenerationConfig(
                 temperature=0.0,

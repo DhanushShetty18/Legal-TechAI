@@ -59,6 +59,12 @@ async def detect_inconsistencies(files: List[UploadFile] = File(...)):
     try:
         report = engine.process(documents_data)
         return report
+    except RuntimeError as e:
+        # Missing API key or configuration error
+        raise HTTPException(
+            status_code=503,
+            detail=f"Service unavailable: {str(e)}",
+        )
     except Exception as e:
         raise HTTPException(
             status_code=500,
