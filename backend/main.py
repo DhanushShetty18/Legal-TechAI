@@ -55,6 +55,9 @@ async def log_requests(request: Request, call_next):
 
 @app.exception_handler(Exception)
 async def global_exception_handler(request: Request, exc: Exception):
+    # Don't swallow HTTPException — let FastAPI handle it natively
+    if isinstance(exc, HTTPException):
+        raise exc
     return JSONResponse(
         status_code=500,
         content={"success": False, "data": None, "error": str(exc)}

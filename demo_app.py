@@ -178,40 +178,81 @@ elif page == "Inconsistency Detector":
         
     if st.button("Scan for Contradictions"):
         if doc_a and doc_b:
-            with st.spinner("Scanning for contradictions..."):
+            with st.spinner("Running 4-step Gemini pipeline... (Entity Extraction → Claim Extraction → Contradiction Detection → Evidence Linking)"):
                 try:
                     files = [
-                        ("files", (doc_a.name, doc_a.getvalue(), doc_a.type)),
-                        ("files", (doc_b.name, doc_b.getvalue(), doc_b.type))
+                        ("files", (doc_a.name, doc_a.getvalue(), doc_a.type or "application/octet-stream")),
+                        ("files", (doc_b.name, doc_b.getvalue(), doc_b.type or "application/octet-stream"))
                     ]
                     
                     start_time = time.time()
-                    resp = requests.post(f"{BACKEND_URL}/inconsistency/detect-inconsistencies", files=files)
+                    resp = requests.post(f"{BACKEND_URL}/inconsistency/detect-inconsistencies", files=files, timeout=120)
                     resp.raise_for_status()
                     elapsed = time.time() - start_time
                     
                     data = resp.json()
-                    inconsistencies = data.get("inconsistencies", [])
+                    total = data.get("total_contradictions", 0)
+                    high = data.get("high_severity", 0)
+                    contradictions = data.get("contradictions", [])
+                    clean_facts = data.get("clean_facts", [])
                     
-                    st.subheader(f"{len(inconsistencies)} contradictions found in {elapsed:.2f} seconds")
+                    # Summary metrics
+                    m1, m2, m3 = st.columns(3)
+                    m1.metric("Total Contradictions", total)
+                    m2.metric("High Severity", high)
+                    m3.metric("Analysis Time", f"{elapsed:.1f}s")
                     
-                    for inc in inconsistencies:
-                        sev = inc.get("severity", "LOW").lower()
+                    if contradictions:
+                        st.subheader(f"⚠️ {len(contradictions)} Contradiction(s) Found")
                         
-                        st.markdown(f'''
-                        <div class="card {sev}-severity">
-                            <h4 style="margin-top:0;">Severity: {sev.upper()} | Type: {inc.get("type", "General").capitalize()}</h4>
-                            <p style="margin-bottom:15px; color:#ddd;"><b>Explanation:</b> {inc.get("description", "")}</p>
-                            <div style="display:flex; gap: 10px;">
-                                <div style="flex: 1; padding: 10px; background: #2a2a3a; border-radius: 5px;">
-                                    <b>{doc_a.name} ({doc_a_type}):</b><br/><i style="color:#aaa;">"{inc.get("source_a_quote", "N/A")}"</i>
+                        for inc in contradictions:
+                            sev = inc.get("severity", "LOW").lower()
+                            ctype = inc.get("contradiction_type", "FACTUAL")
+                            explanation = inc.get("explanation", "")
+                            quote_a = inc.get("exact_quote_doc_a", "N/A")
+                            quote_b = inc.get("exact_quote_doc_b", "N/A")
+                            impossibility = inc.get("impossibility_reason")
+                            
+                            # Build impossibility badge if present
+                            impossibility_html = ""
+                            if impossibility:
+                                impossibility_html = f'''
+                                <div style="margin-top:10px; padding:10px; background:#4a1f1f; border-radius:5px; border-left:3px solid #ff4b4b;">
+                                    <b style="color:#ff9999;">🚫 Physical Impossibility:</b><br/>
+                                    <span style="color:#ffcccc;">{impossibility}</span>
+                                </div>'''
+                            
+                            st.markdown(f'''
+                            <div class="card {sev}-severity">
+                                <div style="display:flex; justify-content:space-between; align-items:center;">
+                                    <h4 style="margin-top:0; color:#bbbbdd;">Severity: {sev.upper()} | Type: {ctype}</h4>
                                 </div>
-                                <div style="flex: 1; padding: 10px; background: #2a2a3a; border-radius: 5px;">
-                                    <b>{doc_b.name} ({doc_b_type}):</b><br/><i style="color:#aaa;">"{inc.get("source_b_quote", "N/A")}"</i>
+                                <p style="margin-bottom:15px; color:#ddd;"><b>Explanation:</b> {explanation}</p>
+                                <div style="display:flex; gap: 10px;">
+                                    <div style="flex: 1; padding: 10px; background: #2a2a3a; border-radius: 5px;">
+                                        <b>{doc_a.name} ({doc_a_type}):</b><br/><i style="color:#aaa;">"{quote_a}"</i>
+                                    </div>
+                                    <div style="flex: 1; padding: 10px; background: #2a2a3a; border-radius: 5px;">
+                                        <b>{doc_b.name} ({doc_b_type}):</b><br/><i style="color:#aaa;">"{quote_b}"</i>
+                                    </div>
                                 </div>
+                                {impossibility_html}
                             </div>
-                        </div>
-                        ''', unsafe_allow_html=True)
+                            ''', unsafe_allow_html=True)
+                    else:
+                        st.success("✅ No contradictions detected. Documents are consistent.")
+                    
+                    # Show clean/consistent facts
+                    if clean_facts:
+                        with st.expander(f"✅ {len(clean_facts)} Consistent Fact(s)", expanded=False):
+                            for cf in clean_facts:
+                                st.markdown(f'''
+                                <div class="card" style="border-left: 3px solid #21c354;">
+                                    <b>Fact:</b> {cf.get("fact", "")}<br/>
+                                    <b>Source:</b> {cf.get("document_id", "")} — {cf.get("page_ref", "")}<br/>
+                                    <i style="color:#aaa;">"{cf.get("exact_quote", "")}"</i>
+                                </div>
+                                ''', unsafe_allow_html=True)
                         
                 except requests.exceptions.RequestException as e:
                     st.error(f"Error communicating with backend: {e}")

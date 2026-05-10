@@ -88,7 +88,7 @@ def query_rag_system(question: str) -> QueryResponse:
     # 3. Generate answer
     prompt = f"System Instruction:\n{SYSTEM_PROMPT}\n\nContext:\n{context}\n\nQuestion: {question}"
     
-    model = genai.GenerativeModel("gemini-2.0-flash")
+    model = genai.GenerativeModel("gemini-1.5-flash-latest")
     response = model.generate_content(prompt)
     answer = response.text
     
