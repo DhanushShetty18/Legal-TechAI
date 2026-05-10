@@ -93,7 +93,7 @@ class InconsistencyEngine:
         # Lazy init: configure Gemini and create model on first call
         if self._model is None:
             _ensure_gemini_configured()
-            self._model = genai.GenerativeModel("gemini-1.5-flash-latest")
+            self._model = genai.GenerativeModel("gemini-2.0-flash")
 
         full_prompt = (
             f"{prompt}\n\n"
