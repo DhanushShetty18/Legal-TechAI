@@ -1,20 +1,22 @@
 "use client";
 
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, ChangeEvent } from "react";
 import Link from "next/link";
-import { Camera, ChevronLeft, Upload, CheckCircle, AlertCircle, Loader2, RefreshCw } from "lucide-react";
+import { Camera, ChevronLeft, Upload, CheckCircle, AlertCircle, Loader2, Image as ImageIcon, RefreshCw } from "lucide-react";
 import DocumentForm, { OCRData } from "@/components/DocumentForm";
 
+// STATE MACHINE EXACTLY AS REQUESTED
 type FlowState = 
-    | 'CAMERA_ACTIVE' 
-    | 'PROCESSING_OCR' 
-    | 'FORM_VERIFICATION' 
-    | 'SUBMITTING_DATA' 
-    | 'SUCCESS';
+    | 'IDLE' 
+    | 'CAPTURE' 
+    | 'PROCESSING' 
+    | 'REVIEW' 
+    | 'SUBMITTED';
 
 export default function FileCasePage() {
     const videoRef = useRef<HTMLVideoElement>(null);
     const canvasRef = useRef<HTMLCanvasElement>(null);
+    const fileInputRef = useRef<HTMLInputElement>(null);
     
     const [stream, setStream] = useState<MediaStream | null>(null);
     const [imageBlob, setImageBlob] = useState<Blob | null>(null);
@@ -22,51 +24,10 @@ export default function FileCasePage() {
     const [ocrData, setOcrData] = useState<OCRData | null>(null);
     
     // Strict State Machine
-    const [flowState, setFlowState] = useState<FlowState>('CAMERA_ACTIVE');
-    const [cameraError, setCameraError] = useState<string | null>(null);
-    const [processError, setProcessError] = useState<string | null>(null);
-
-    // Initialize Camera
-    useEffect(() => {
-        if (flowState === 'CAMERA_ACTIVE') {
-            startCamera();
-        }
-        return () => stopCamera();
-    }, [flowState]);
-
-    const startCamera = async () => {
-        setCameraError(null);
-        try {
-            if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-                throw new Error("Your browser does not support camera access.");
-            }
-
-            // Attempt environment camera first (mobile rear), fallback gracefully to any available
-            let mediaStream: MediaStream;
-            try {
-                mediaStream = await navigator.mediaDevices.getUserMedia({
-                    video: { facingMode: { ideal: "environment" } }
-                });
-            } catch (err) {
-                // Fallback to default if environment facing mode fails (e.g. on laptops)
-                mediaStream = await navigator.mediaDevices.getUserMedia({
-                    video: true
-                });
-            }
-
-            setStream(mediaStream);
-            if (videoRef.current) {
-                videoRef.current.srcObject = mediaStream;
-            }
-        } catch (err: any) {
-            console.error("Camera Initialization Error:", err);
-            setCameraError(
-                err.name === 'NotAllowedError' 
-                    ? "Camera access denied. Please check your browser permissions and reload."
-                    : "Unable to access camera. Please ensure your device has a working webcam."
-            );
-        }
-    };
+    const [flowState, setFlowState] = useState<FlowState>('IDLE');
+    const [error, setError] = useState<string | null>(null);
+    const [showFileUpload, setShowFileUpload] = useState(false);
+    const [isSubmitting, setIsSubmitting] = useState(false);
 
     const stopCamera = () => {
         if (stream) {
@@ -75,12 +36,61 @@ export default function FileCasePage() {
         }
     };
 
-    // State 1 -> State 2 Transition
+    // Cleanup camera when leaving CAPTURE state
+    useEffect(() => {
+        if (flowState !== 'CAPTURE') {
+            stopCamera();
+        }
+        return () => stopCamera();
+    }, [flowState]);
+
+    const startCamera = async () => {
+        setError(null);
+        setShowFileUpload(false);
+        setFlowState('CAPTURE');
+        
+        // Timeout ensures the DOM video element is rendered before we attach the stream
+        setTimeout(async () => {
+            try {
+                const mediaStream = await navigator.mediaDevices.getUserMedia({
+                    video: { facingMode: 'environment' }, 
+                    audio: false
+                });
+                setStream(mediaStream);
+                if (videoRef.current) {
+                    videoRef.current.srcObject = mediaStream;
+                }
+            } catch (err) {
+                // PROBLEM 1 FIX: Show file upload fallback immediately
+                setShowFileUpload(true);
+                setError('Camera not available. Please upload an image.');
+            }
+        }, 100);
+    };
+
+    const handleFileUploadClick = () => {
+        setError(null);
+        setFlowState('CAPTURE');
+        setShowFileUpload(true);
+    };
+
+    // Triggered when user selects a file from disk
+    const handleFileSelect = (e: ChangeEvent<HTMLInputElement>) => {
+        if (e.target.files && e.target.files[0]) {
+            const file = e.target.files[0];
+            setImageBlob(file);
+            // PROBLEM 2 FIX: Automatically go to STATE 3
+            extractFromImage(file);
+        }
+    };
+
+    // Triggered when user clicks "Capture" from webcam
     const handleCapture = () => {
         if (!caseTitle.trim()) {
-            alert("Please provide a Case Title before capturing the document.");
+            setError("Please provide a Case Title before capturing the document.");
             return;
         }
+        setError(null);
 
         if (videoRef.current && canvasRef.current) {
             const video = videoRef.current;
@@ -96,82 +106,71 @@ export default function FileCasePage() {
                     if (blob) {
                         setImageBlob(blob);
                         stopCamera();
-                        processDocument(blob); // Immediately transition to processing
+                        // PROBLEM 2 FIX: Automatically go to STATE 3
+                        extractFromImage(blob); 
                     }
                 }, "image/jpeg", 0.9);
             }
         }
     };
 
-    // State 2 Action: Process OCR
-    const processDocument = async (blob: Blob) => {
-        setFlowState('PROCESSING_OCR');
-        setProcessError(null);
+    const extractFromImage = async (blob: Blob) => {
+        // STATE 3: PROCESSING
+        setFlowState('PROCESSING');
+        setError(null);
 
         try {
             const formData = new FormData();
-            formData.append("file", blob, "evidence.jpg");
-
-            // Post image to backend to extract text
-            const response = await fetch("https://legal-techai.onrender.com/ocr-extract", {
-                method: "POST",
-                body: formData
-            });
-
-            if (!response.ok) {
-                const errData = await response.json().catch(() => ({}));
-                throw new Error(errData.detail || "Vision AI processing failed.");
-            }
-
+            formData.append('file', blob, 'document.jpg');
+            
+            const response = await fetch(
+                'https://legal-techai.onrender.com/ocr-extract',
+                { method: 'POST', body: formData }
+            );
+            
+            if (!response.ok) throw new Error('OCR failed');
+            
             const data: OCRData = await response.json();
             setOcrData(data);
             
-            // State 2 -> State 3 Transition
-            setFlowState('FORM_VERIFICATION');
-
-        } catch (error: any) {
-            console.error("OCR Error:", error);
-            setProcessError(error.message || "An unexpected error occurred during extraction.");
-            // Keep in processing state but show error UI to allow retry
+            // On success -> go to STATE 4
+            setFlowState('REVIEW');
+        } catch (err: any) {
+            console.error("OCR Error:", err);
+            setError(err.message || "Failed to read document.");
+            // On failure -> show error + return to STATE 1
+            setFlowState('IDLE');
         }
     };
 
-    const retryCapture = () => {
-        setProcessError(null);
-        setImageBlob(null);
-        setOcrData(null);
-        setFlowState('CAMERA_ACTIVE');
-    };
-
-    // State 3 -> State 4 Transition
     const handleFinalSubmit = async (finalOcrData: OCRData) => {
-        setFlowState('SUBMITTING_DATA');
-        setProcessError(null);
+        // PROBLEM 3 FIX: Submission logic is completely locked behind STATE 4
+        // which guarantees that ocrData exists.
+        setIsSubmitting(true);
+        setError(null);
         
         try {
             const USER_ID = 1;
 
-            // 1. Create Case
             const caseRes = await fetch("https://legal-techai.onrender.com/cases/?user_id=" + USER_ID, {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({
-                    title: caseTitle,
-                    description: "Filed via Camera App with OCR Extraction",
+                    title: caseTitle || "Untitled Case",
+                    description: "Filed via Document OCR",
                     priority: "NORMAL"
                 })
             });
 
-            if (!caseRes.ok) throw new Error("Failed to create case record.");
+            if (!caseRes.ok) throw new Error("Failed to create case.");
             const caseData = await caseRes.json();
             const CASE_ID = caseData.id;
 
-            // 2. Upload Document
             const formData = new FormData();
             formData.append("file", imageBlob!, "evidence.jpg");
             formData.append("case_id", CASE_ID.toString());
             formData.append("uploader_id", USER_ID.toString());
-            formData.append("capture_method", "camera");
+            formData.append("capture_method", showFileUpload ? "upload" : "camera");
             formData.append("extracted_metadata", JSON.stringify(finalOcrData));
 
             const docRes = await fetch("https://legal-techai.onrender.com/documents/", {
@@ -179,20 +178,26 @@ export default function FileCasePage() {
                 body: formData
             });
 
-            if (!docRes.ok) throw new Error("Failed to securely upload evidence document.");
+            if (!docRes.ok) throw new Error("Failed to upload document data.");
 
-            // State 4 -> State 5 Transition
-            setFlowState('SUCCESS');
-            
-        } catch (error: any) {
-            console.error("Submission Error:", error);
-            setProcessError(error.message || "Failed to submit final data.");
-            // Revert to form verification so they can try submitting again
-            setFlowState('FORM_VERIFICATION');
+            // STATE 5: SUBMITTED
+            setFlowState('SUBMITTED');
+        } catch (err: any) {
+            console.error("Submission Error:", err);
+            setError(err.message || "Failed to submit final data.");
+        } finally {
+            setIsSubmitting(false);
         }
     };
 
-    // Render Logic based on strict State Machine
+    const resetToIdle = () => {
+        setFlowState('IDLE');
+        setError(null);
+        setImageBlob(null);
+        setOcrData(null);
+        setCaseTitle("");
+    };
+
     return (
         <div className="min-h-screen bg-slate-950 text-white font-sans flex flex-col selection:bg-indigo-500/30">
             {/* Header */}
@@ -205,115 +210,173 @@ export default function FileCasePage() {
 
             <main className="flex-1 flex flex-col p-4 md:p-8 max-w-4xl mx-auto w-full">
                 
-                {/* State 1: CAMERA_ACTIVE */}
-                {flowState === 'CAMERA_ACTIVE' && (
-                    <div className="max-w-md mx-auto w-full flex flex-col animate-in fade-in duration-300">
-                        <div className="mb-6">
-                            <label className="block text-sm font-medium text-slate-400 mb-2">Case Title / Reference</label>
-                            <input
-                                type="text"
-                                className="w-full bg-slate-900 border border-slate-700 rounded-xl px-4 py-3 text-white focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 outline-none transition-all"
-                                placeholder="e.g. Property Dispute"
-                                value={caseTitle}
-                                onChange={(e) => setCaseTitle(e.target.value)}
-                            />
-                        </div>
-
-                        <div className="relative flex-1 bg-black rounded-3xl overflow-hidden shadow-2xl border border-slate-800 mb-6 min-h-[500px]">
-                            {cameraError ? (
-                                <div className="absolute inset-0 flex flex-col items-center justify-center p-6 text-center bg-slate-900">
-                                    <AlertCircle className="h-12 w-12 text-red-500 mb-4" />
-                                    <p className="text-slate-300 font-medium">{cameraError}</p>
-                                    <button 
-                                        onClick={startCamera}
-                                        className="mt-6 px-6 py-2 bg-slate-800 hover:bg-slate-700 rounded-lg transition-colors border border-slate-700"
-                                    >
-                                        Try Again
-                                    </button>
-                                </div>
-                            ) : (
-                                <>
-                                    <video
-                                        ref={videoRef}
-                                        autoPlay
-                                        playsInline
-                                        muted
-                                        className="absolute inset-0 w-full h-full object-cover"
-                                    />
-                                    {/* Viewfinder overlay */}
-                                    <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-                                        <div className="w-3/4 h-1/2 max-w-sm max-h-64 border-2 border-indigo-500/50 rounded-xl shadow-[0_0_0_9999px_rgba(0,0,0,0.5)]">
-                                            <div className="absolute -top-1 -left-1 w-6 h-6 border-t-2 border-l-2 border-indigo-400"></div>
-                                            <div className="absolute -top-1 -right-1 w-6 h-6 border-t-2 border-r-2 border-indigo-400"></div>
-                                            <div className="absolute -bottom-1 -left-1 w-6 h-6 border-b-2 border-l-2 border-indigo-400"></div>
-                                            <div className="absolute -bottom-1 -right-1 w-6 h-6 border-b-2 border-r-2 border-indigo-400"></div>
-                                        </div>
-                                    </div>
-                                    <div className="absolute top-4 left-0 right-0 text-center text-sm font-medium text-white/80 drop-shadow-md">
-                                        Align document within frame
-                                    </div>
-
-                                    {/* Capture Button */}
-                                    <div className="absolute bottom-8 left-0 right-0 flex flex-col items-center z-10 gap-3">
-                                        <button
-                                            onClick={handleCapture}
-                                            className="h-20 w-20 rounded-full border-4 border-white flex items-center justify-center bg-white/20 hover:bg-white/30 active:scale-95 transition-all shadow-xl backdrop-blur-sm"
-                                            aria-label="Capture Document"
-                                        >
-                                            <div className="h-14 w-14 rounded-full bg-white shadow-inner"></div>
-                                        </button>
-                                        <span className="text-white font-medium drop-shadow-md">Capture Document</span>
-                                    </div>
-                                </>
-                            )}
-                            <canvas ref={canvasRef} className="hidden" />
-                        </div>
+                {/* Global Error Display (used in IDLE, REVIEW) */}
+                {error && flowState !== 'CAPTURE' && (
+                    <div className="mb-6 p-4 bg-red-500/10 border border-red-500/30 rounded-xl flex items-start gap-3 w-full max-w-md mx-auto">
+                        <AlertCircle className="h-5 w-5 text-red-400 flex-shrink-0 mt-0.5" />
+                        <p className="text-red-200 text-sm">{error}</p>
                     </div>
                 )}
 
-                {/* State 2: PROCESSING_OCR */}
-                {flowState === 'PROCESSING_OCR' && (
-                    <div className="flex flex-col items-center justify-center min-h-[60vh] animate-in zoom-in-95 duration-500">
-                        {processError ? (
-                            <div className="bg-slate-900 border border-red-500/30 p-8 rounded-3xl text-center max-w-md shadow-2xl">
-                                <AlertCircle className="h-16 w-16 text-red-500 mx-auto mb-4" />
-                                <h3 className="text-xl font-bold text-white mb-2">Extraction Failed</h3>
-                                <p className="text-slate-400 mb-8">{processError}</p>
-                                <button
-                                    onClick={retryCapture}
-                                    className="w-full py-3 bg-slate-800 hover:bg-slate-700 text-white rounded-xl font-medium transition-colors flex items-center justify-center gap-2"
+                {/* Case Title Input (Visible in IDLE and CAPTURE) */}
+                {(flowState === 'IDLE' || flowState === 'CAPTURE') && (
+                    <div className="max-w-md mx-auto w-full mb-6">
+                        <label className="block text-sm font-medium text-slate-400 mb-2">Case Title / Reference</label>
+                        <input
+                            type="text"
+                            className="w-full bg-slate-900 border border-slate-700 rounded-xl px-4 py-3 text-white focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 outline-none transition-all"
+                            placeholder="e.g. Property Dispute"
+                            value={caseTitle}
+                            onChange={(e) => setCaseTitle(e.target.value)}
+                        />
+                    </div>
+                )}
+                
+                {/* STATE 1: IDLE */}
+                {flowState === 'IDLE' && (
+                    <div className="max-w-md mx-auto w-full flex flex-col gap-4 animate-in fade-in duration-300 mt-4">
+                        <button 
+                            onClick={startCamera}
+                            className="w-full py-5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-2xl font-bold transition-colors flex flex-col items-center justify-center gap-3 shadow-lg shadow-indigo-500/20"
+                        >
+                            <Camera className="h-8 w-8" />
+                            <span className="text-lg">Open Camera</span>
+                        </button>
+                        
+                        <div className="text-center text-slate-500 font-medium py-2">OR</div>
+                        
+                        <button 
+                            onClick={handleFileUploadClick}
+                            className="w-full py-5 bg-slate-800 hover:bg-slate-700 text-white rounded-2xl font-bold transition-colors flex flex-col items-center justify-center gap-3 border border-slate-700"
+                        >
+                            <Upload className="h-8 w-8 text-slate-400" />
+                            <span className="text-lg">Upload Image</span>
+                        </button>
+                    </div>
+                )}
+
+                {/* STATE 2: CAPTURE */}
+                {flowState === 'CAPTURE' && (
+                    <div className="max-w-md mx-auto w-full flex flex-col animate-in fade-in duration-300">
+                        {showFileUpload ? (
+                            <div className="bg-slate-900 border-2 border-dashed border-slate-700 rounded-3xl p-10 text-center flex flex-col items-center justify-center min-h-[400px]">
+                                {error && (
+                                    <div className="mb-6 p-3 bg-amber-500/10 border border-amber-500/30 rounded-lg flex items-center gap-2 text-amber-300 text-sm w-full">
+                                        <AlertCircle className="h-4 w-4 shrink-0" />
+                                        <span>{error}</span>
+                                    </div>
+                                )}
+                                <ImageIcon className="h-16 w-16 text-slate-500 mb-6" />
+                                <h3 className="text-xl font-semibold text-white mb-2">Upload Document</h3>
+                                <p className="text-slate-400 mb-8 text-sm">Select an image from your device</p>
+                                
+                                <input 
+                                    type="file" 
+                                    accept="image/*"
+                                    className="hidden"
+                                    ref={fileInputRef}
+                                    onChange={handleFileSelect}
+                                />
+                                <button 
+                                    onClick={() => fileInputRef.current?.click()}
+                                    className="px-8 py-3 bg-indigo-600 hover:bg-indigo-500 rounded-xl font-medium transition-colors w-full"
                                 >
-                                    <RefreshCw className="h-5 w-5" /> Retake Photo
+                                    Select File
+                                </button>
+                                
+                                <button 
+                                    onClick={resetToIdle}
+                                    className="mt-6 text-sm text-slate-500 hover:text-white transition-colors"
+                                >
+                                    Cancel
                                 </button>
                             </div>
                         ) : (
-                            <div className="flex flex-col items-center text-center space-y-6">
-                                <div className="relative">
-                                    <div className="absolute inset-0 bg-indigo-500 rounded-full blur-xl opacity-20 animate-pulse"></div>
-                                    <div className="h-24 w-24 bg-slate-900 border border-indigo-500/30 rounded-2xl flex items-center justify-center shadow-2xl relative z-10">
-                                        <Loader2 className="h-10 w-10 text-indigo-400 animate-spin" />
+                            <div className="relative flex-1 bg-black rounded-3xl overflow-hidden shadow-2xl border border-slate-800 min-h-[500px]">
+                                <video
+                                    ref={videoRef}
+                                    autoPlay
+                                    playsInline
+                                    muted
+                                    className="absolute inset-0 w-full h-full object-cover"
+                                />
+                                {/* Viewfinder overlay */}
+                                <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+                                    <div className="w-3/4 h-1/2 max-w-sm max-h-64 border-2 border-indigo-500/50 rounded-xl shadow-[0_0_0_9999px_rgba(0,0,0,0.5)]">
+                                        <div className="absolute -top-1 -left-1 w-6 h-6 border-t-2 border-l-2 border-indigo-400"></div>
+                                        <div className="absolute -top-1 -right-1 w-6 h-6 border-t-2 border-r-2 border-indigo-400"></div>
+                                        <div className="absolute -bottom-1 -left-1 w-6 h-6 border-b-2 border-l-2 border-indigo-400"></div>
+                                        <div className="absolute -bottom-1 -right-1 w-6 h-6 border-b-2 border-r-2 border-indigo-400"></div>
                                     </div>
                                 </div>
-                                <div>
-                                    <h2 className="text-2xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-indigo-400 to-purple-400 mb-2">
-                                        Extracting Legal Data
-                                    </h2>
-                                    <p className="text-slate-400">Our Vision AI is actively parsing your document...</p>
+                                <div className="absolute top-4 left-0 right-0 text-center text-sm font-medium text-white/80 drop-shadow-md">
+                                    Align document within frame
                                 </div>
+
+                                {/* Capture Button */}
+                                <div className="absolute bottom-8 left-0 right-0 flex flex-col items-center z-10 gap-3">
+                                    <button
+                                        onClick={handleCapture}
+                                        className="h-20 w-20 rounded-full border-4 border-white flex items-center justify-center bg-white/20 hover:bg-white/30 active:scale-95 transition-all shadow-xl backdrop-blur-sm"
+                                        aria-label="Capture Document"
+                                    >
+                                        <div className="h-14 w-14 rounded-full bg-white shadow-inner"></div>
+                                    </button>
+                                    <span className="text-white font-medium drop-shadow-md">Capture Document</span>
+                                </div>
+                                <canvas ref={canvasRef} className="hidden" />
+                                
+                                <button 
+                                    onClick={resetToIdle}
+                                    className="absolute top-4 right-4 bg-black/50 p-2 rounded-full text-white/80 hover:text-white"
+                                >
+                                    Cancel
+                                </button>
                             </div>
                         )}
                     </div>
                 )}
 
-                {/* State 3: FORM_VERIFICATION (and Error display for SUBMITTING_DATA) */}
-                {flowState === 'FORM_VERIFICATION' && ocrData && (
-                    <div className="w-full animate-in slide-in-from-bottom-8 duration-700">
-                        {processError && (
-                            <div className="mb-6 p-4 bg-red-500/10 border border-red-500/30 rounded-xl flex items-start gap-3">
-                                <AlertCircle className="h-5 w-5 text-red-400 flex-shrink-0 mt-0.5" />
-                                <p className="text-red-200 text-sm">{processError}</p>
+                {/* STATE 3: PROCESSING */}
+                {flowState === 'PROCESSING' && (
+                    <div className="flex flex-col items-center justify-center min-h-[50vh] animate-in zoom-in-95 duration-500">
+                        <div className="flex flex-col items-center text-center space-y-6">
+                            <div className="relative">
+                                <div className="absolute inset-0 bg-indigo-500 rounded-full blur-xl opacity-20 animate-pulse"></div>
+                                <div className="h-24 w-24 bg-slate-900 border border-indigo-500/30 rounded-2xl flex items-center justify-center shadow-2xl relative z-10">
+                                    <Loader2 className="h-10 w-10 text-indigo-400 animate-spin" />
+                                </div>
                             </div>
-                        )}
+                            <div>
+                                <h2 className="text-2xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-indigo-400 to-purple-400 mb-2">
+                                    Reading your document...
+                                </h2>
+                                <p className="text-slate-400">Securely extracting legal data via Vision AI</p>
+                            </div>
+                        </div>
+                    </div>
+                )}
+
+                {/* STATE 4: REVIEW */}
+                {flowState === 'REVIEW' && ocrData && (
+                    <div className="w-full animate-in slide-in-from-bottom-8 duration-700 relative">
+                        {isSubmitting ? (
+                            <div className="absolute inset-0 z-50 bg-slate-950/80 backdrop-blur-sm rounded-3xl flex flex-col items-center justify-center">
+                                <Loader2 className="h-12 w-12 text-indigo-400 animate-spin mb-4" />
+                                <span className="text-lg font-bold">Submitting to database...</span>
+                            </div>
+                        ) : null}
+                        
+                        <div className="mb-4 flex justify-end">
+                            <button 
+                                onClick={resetToIdle}
+                                className="flex items-center gap-2 text-sm text-slate-400 hover:text-white transition-colors bg-slate-800/50 px-4 py-2 rounded-lg"
+                            >
+                                <RefreshCw className="h-4 w-4" />
+                                Retake Document
+                            </button>
+                        </div>
+                        
                         <DocumentForm 
                             initialData={ocrData} 
                             onSubmit={handleFinalSubmit} 
@@ -321,26 +384,25 @@ export default function FileCasePage() {
                     </div>
                 )}
 
-                {/* State 4: SUBMITTING_DATA */}
-                {flowState === 'SUBMITTING_DATA' && (
-                    <div className="flex flex-col items-center justify-center min-h-[60vh] animate-in fade-in">
-                        <Loader2 className="h-14 w-14 text-emerald-400 animate-spin mb-6" />
-                        <h2 className="text-2xl font-bold text-white mb-2">Securing Data</h2>
-                        <p className="text-slate-400">Encrypting and committing to national ledger...</p>
-                    </div>
-                )}
-
-                {/* State 5: SUCCESS */}
-                {flowState === 'SUCCESS' && (
-                    <div className="flex flex-col items-center justify-center min-h-[60vh] animate-in zoom-in-95 duration-500">
-                        <div className="bg-slate-900 border border-emerald-500/30 p-10 rounded-3xl text-center max-w-md shadow-[0_0_40px_rgba(16,185,129,0.1)]">
+                {/* STATE 5: SUBMITTED */}
+                {flowState === 'SUBMITTED' && (
+                    <div className="flex flex-col items-center justify-center min-h-[50vh] animate-in zoom-in-95 duration-500">
+                        <div className="bg-slate-900 border border-emerald-500/30 p-10 rounded-3xl text-center max-w-md shadow-[0_0_40px_rgba(16,185,129,0.1)] w-full">
                             <div className="h-20 w-20 bg-emerald-500/20 rounded-full flex items-center justify-center mx-auto mb-6">
                                 <CheckCircle className="h-10 w-10 text-emerald-400" />
                             </div>
                             <h2 className="text-2xl font-bold text-white mb-3">Filing Complete</h2>
                             <p className="text-slate-400 mb-8">
-                                Document successfully hashed and securely stored.
+                                Document successfully parsed and securely stored.
                             </p>
+                            
+                            <button
+                                onClick={resetToIdle}
+                                className="block w-full py-4 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl font-bold transition-colors shadow-lg mb-4"
+                            >
+                                File Another Document
+                            </button>
+                            
                             <Link
                                 href="/"
                                 className="block w-full py-3.5 bg-slate-800 hover:bg-slate-700 text-white rounded-xl font-medium transition-colors border border-slate-700"
