@@ -147,6 +147,7 @@ def upload_document(
     case_id: int = Form(...),
     uploader_id: int = Form(...),
     capture_method: str = Form("camera"),
+    extracted_metadata: Optional[str] = Form(None),
     file: UploadFile = File(...),
     db: Session = Depends(get_db)
 ):
@@ -169,7 +170,7 @@ def upload_document(
     
     doc_create = schemas.DocumentCreate(
         file_type=file.content_type,
-        capture_metadata=None
+        capture_metadata=extracted_metadata
     )
     
     return crud.create_document(

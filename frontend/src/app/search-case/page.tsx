@@ -11,7 +11,7 @@ interface Case {
     description: string;
     status: string;
     created_at: string;
-    documents: { id: number, file_hash: string }[];
+    documents: { id: number, file_hash: string, capture_metadata?: string }[];
 }
 
 export default function SearchCasePage() {
@@ -143,6 +143,41 @@ export default function SearchCasePage() {
                                 </div>
                             </div>
 
+                            {/* Extracted Document Data Section */}
+                            {result.documents.map((doc, idx) => {
+                                if (!doc.capture_metadata) return null;
+                                let metadata = null;
+                                try {
+                                    metadata = JSON.parse(doc.capture_metadata);
+                                } catch (e) {
+                                    return null;
+                                }
+                                
+                                return (
+                                    <div key={idx} className="mt-8 border border-slate-200 rounded-xl overflow-hidden">
+                                        <div className="bg-slate-50 p-4 border-b border-slate-200 flex items-center gap-2">
+                                            <FileText className="h-5 w-5 text-indigo-600" />
+                                            <h4 className="font-bold text-slate-900">Extracted Document Form</h4>
+                                        </div>
+                                        <div className="p-6 bg-white">
+                                            <div className="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-4">
+                                                {Object.entries(metadata).map(([key, value]) => (
+                                                    value ? (
+                                                        <div key={key} className="border-b border-slate-100 pb-2">
+                                                            <div className="text-xs text-slate-500 uppercase font-bold tracking-wider mb-1">
+                                                                {key.replace(/([A-Z])/g, ' $1').trim()}
+                                                            </div>
+                                                            <div className="font-medium text-slate-900">
+                                                                {String(value)}
+                                                            </div>
+                                                        </div>
+                                                    ) : null
+                                                ))}
+                                            </div>
+                                        </div>
+                                    </div>
+                                );
+                            })}
                         </div>
                     </div>
                 )}
