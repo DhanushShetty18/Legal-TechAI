@@ -45,27 +45,22 @@ export default function FileCasePage() {
     }, [flowState]);
 
     const startCamera = async () => {
-        setError(null);
-        setShowFileUpload(false);
         setFlowState('CAPTURE');
-        
-        // Timeout ensures the DOM video element is rendered before we attach the stream
-        setTimeout(async () => {
-            try {
-                const mediaStream = await navigator.mediaDevices.getUserMedia({
-                    video: { facingMode: 'environment' }, 
-                    audio: false
-                });
-                setStream(mediaStream);
-                if (videoRef.current) {
-                    videoRef.current.srcObject = mediaStream;
-                }
-            } catch (err) {
-                // PROBLEM 1 FIX: Show file upload fallback immediately
-                setShowFileUpload(true);
-                setError('Camera not available. Please upload an image.');
+        setShowFileUpload(false);
+        setError(null);
+        try {
+            const stream = await navigator.mediaDevices.getUserMedia({
+                video: { facingMode: 'environment' },
+                audio: false
+            });
+            setStream(stream); // Keep track for stopCamera
+            if (videoRef.current) {
+                videoRef.current.srcObject = stream;
             }
-        }, 100);
+        } catch (err) {
+            setShowFileUpload(true);
+            setError('Camera unavailable. Please upload image.');
+        }
     };
 
     const handleFileUploadClick = () => {
@@ -114,32 +109,28 @@ export default function FileCasePage() {
         }
     };
 
-    const extractFromImage = async (blob: Blob) => {
-        // STATE 3: PROCESSING
+    const extractFromImage = async (imageBlob: Blob) => {
         setFlowState('PROCESSING');
         setError(null);
-
         try {
             const formData = new FormData();
-            formData.append('file', blob, 'document.jpg');
-            
+            formData.append('file', imageBlob, 'document.jpg');
             const response = await fetch(
                 'https://legal-techai.onrender.com/ocr-extract',
                 { method: 'POST', body: formData }
             );
-            
             if (!response.ok) throw new Error('OCR failed');
             
             const data: OCRData = await response.json();
             setOcrData(data);
-            
-            // On success -> go to STATE 4
             setFlowState('REVIEW');
+            
+            return data;
         } catch (err: any) {
             console.error("OCR Error:", err);
             setError(err.message || "Failed to read document.");
-            // On failure -> show error + return to STATE 1
             setFlowState('IDLE');
+            throw err;
         }
     };
 

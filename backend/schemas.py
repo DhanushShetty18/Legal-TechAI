@@ -1,5 +1,5 @@
 
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 from typing import List, Optional, Any
 from datetime import datetime
 
@@ -23,8 +23,7 @@ class Document(DocumentBase):
     doc_type: Optional[str] = None
     uploaded_at: Optional[datetime] = None
 
-    class Config:
-        orm_mode = True
+    model_config = ConfigDict(from_attributes=True)
 
 class CaseBase(BaseModel):
     title: str
@@ -42,8 +41,7 @@ class Case(CaseBase):
     created_at: datetime
     documents: List[Document] = []
 
-    class Config:
-        orm_mode = True
+    model_config = ConfigDict(from_attributes=True)
 
 class UserBase(BaseModel):
     email: str
@@ -58,8 +56,7 @@ class User(UserBase):
     is_verified_identity: bool
     created_at: datetime
 
-    class Config:
-        orm_mode = True
+    model_config = ConfigDict(from_attributes=True)
 
 # --- RAG Schemas ---
 class SectionInput(BaseModel):
@@ -99,5 +96,4 @@ class Inconsistency(InconsistencyBase):
     id: int
     created_at: datetime
 
-    class Config:
-        orm_mode = True
+    model_config = ConfigDict(from_attributes=True)

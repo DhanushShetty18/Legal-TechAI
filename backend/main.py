@@ -32,7 +32,7 @@ app.include_router(rag.router)
 app.include_router(inconsistency.router, prefix="/inconsistency")
 app.include_router(ingest.router)
 app.include_router(summarizer.router)
-app.include_router(ocr_extract.router)
+app.include_router(ocr_extract.router, prefix="/ocr-extract")
 
 # Configure CORS
 app.add_middleware(
