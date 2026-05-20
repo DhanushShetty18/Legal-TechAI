@@ -2,7 +2,7 @@ from fastapi import APIRouter, UploadFile, File, HTTPException
 from pydantic import BaseModel
 from typing import Optional
 import logging
-from ..modules.ocr_extractor import extract_document_data
+from modules.ocr_extractor import extract_document_data
 
 logger = logging.getLogger(__name__)
 
