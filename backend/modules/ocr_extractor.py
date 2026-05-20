@@ -6,6 +6,11 @@ from .gemini import extract_json, retry_on_failure
 
 logger = logging.getLogger(__name__)
 
+import os
+api_key = os.getenv("GEMINI_API_KEY")
+if api_key:
+    genai.configure(api_key=api_key)
+
 def redact_sensitive_info(data: Dict[str, Any]) -> Dict[str, Any]:
     """Redact sensitive IDs before logging."""
     redacted = data.copy()
