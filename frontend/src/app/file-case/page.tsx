@@ -2,7 +2,8 @@
 
 import { useState, useRef, useEffect } from "react";
 import Link from "next/link";
-import { Camera, ChevronLeft, Upload, CheckCircle, AlertCircle } from "lucide-react";
+import { Camera, ChevronLeft, Upload, CheckCircle, AlertCircle, Loader2 } from "lucide-react";
+import DocumentForm, { OCRData } from "@/components/DocumentForm";
 
 export default function FileCasePage() {
     const videoRef = useRef<HTMLVideoElement>(null);
@@ -11,8 +12,10 @@ export default function FileCasePage() {
     const [capturedImage, setCapturedImage] = useState<string | null>(null);
     const [imageBlob, setImageBlob] = useState<Blob | null>(null);
     const [isSubmitting, setIsSubmitting] = useState(false);
+    const [isExtracting, setIsExtracting] = useState(false);
     const [uploadStatus, setUploadStatus] = useState<"idle" | "success" | "error">("idle");
     const [caseTitle, setCaseTitle] = useState("");
+    const [ocrData, setOcrData] = useState<OCRData | null>(null);
 
     // Start Camera on Mount
     useEffect(() => {
@@ -23,7 +26,7 @@ export default function FileCasePage() {
     const startCamera = async () => {
         try {
             const mediaStream = await navigator.mediaDevices.getUserMedia({
-                video: { facingMode: "environment" } // Prefer back camera on mobile
+                video: { facingMode: "environment" }
             });
             setStream(mediaStream);
             if (videoRef.current) {
@@ -67,35 +70,57 @@ export default function FileCasePage() {
         setCapturedImage(null);
         setImageBlob(null);
         setUploadStatus("idle");
+        setOcrData(null);
     };
 
-    const submitCase = async () => {
+    const processWithAI = async () => {
         if (!imageBlob || !caseTitle) {
             alert("Please provide a case title and capture evidence.");
             return;
         }
 
-        setIsSubmitting(true);
+        setIsExtracting(true);
         setUploadStatus("idle");
 
         try {
-            // 1. Create Case First (simplification: usually we'd do this in one go or user session)
-            // For MVP, we'll create a user (hardcoded id=1) and a case, then upload doc.
-            // Ideally we'd have auth.
+            const formData = new FormData();
+            formData.append("file", imageBlob, "evidence.jpg");
 
-            // We'll skip case creation request for MVP and assume we're attaching to a new case 
-            // OR we just create the case directly.
-            // Let's call the endpoints we tested.
+            // Post image to backend to extract text
+            const response = await fetch("https://legal-techai.onrender.com/ocr-extract", {
+                method: "POST",
+                body: formData
+            });
 
-            const USER_ID = 1; // Hardcoded for MVP
+            if (!response.ok) {
+                const errData = await response.json();
+                throw new Error(errData.detail || "Failed to process image via Vision AI");
+            }
 
-            // Create Case
+            const data: OCRData = await response.json();
+            setOcrData(data);
+        } catch (error) {
+            console.error(error);
+            setUploadStatus("error");
+            alert("Failed to extract data: " + (error as Error).message);
+        } finally {
+            setIsExtracting(false);
+        }
+    };
+
+    const submitCase = async (finalOcrData: OCRData) => {
+        setIsSubmitting(true);
+        
+        try {
+            const USER_ID = 1;
+
+            // 1. Create Case
             const caseRes = await fetch("https://legal-techai.onrender.com/cases/?user_id=" + USER_ID, {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({
                     title: caseTitle,
-                    description: "Filed via Camera App",
+                    description: "Filed via Camera App with OCR Extraction",
                     priority: "NORMAL"
                 })
             });
@@ -104,12 +129,15 @@ export default function FileCasePage() {
             const caseData = await caseRes.json();
             const CASE_ID = caseData.id;
 
-            // Upload Document
+            // 2. Upload Document
             const formData = new FormData();
-            formData.append("file", imageBlob, "evidence.jpg");
+            formData.append("file", imageBlob!, "evidence.jpg");
             formData.append("case_id", CASE_ID.toString());
             formData.append("uploader_id", USER_ID.toString());
             formData.append("capture_method", "camera");
+            
+            // We can also stringify finalOcrData and append it here if backend supported it
+            formData.append("extracted_metadata", JSON.stringify(finalOcrData));
 
             const docRes = await fetch("https://legal-techai.onrender.com/documents/", {
                 method: "POST",
@@ -119,6 +147,7 @@ export default function FileCasePage() {
             if (!docRes.ok) throw new Error("Failed to upload evidence");
 
             setUploadStatus("success");
+            setOcrData(null); // Clear form to show success
         } catch (error) {
             console.error(error);
             setUploadStatus("error");
@@ -137,113 +166,131 @@ export default function FileCasePage() {
                 <h1 className="text-lg font-bold">New Case Filing</h1>
             </header>
 
-            <main className="flex-1 flex flex-col p-4 max-w-md mx-auto w-full">
-                {/* Progress Steps (Fake) */}
-                <div className="flex gap-2 mb-6">
-                    <div className="h-1 flex-1 bg-amber-500 rounded-full"></div>
-                    <div className="h-1 flex-1 bg-amber-500/20 rounded-full"></div>
-                    <div className="h-1 flex-1 bg-amber-500/20 rounded-full"></div>
-                </div>
+            <main className="flex-1 flex flex-col p-4 max-w-4xl mx-auto w-full">
+                {!ocrData ? (
+                    <div className="max-w-md mx-auto w-full flex flex-col">
+                        <div className="flex gap-2 mb-6">
+                            <div className="h-1 flex-1 bg-amber-500 rounded-full"></div>
+                            <div className="h-1 flex-1 bg-amber-500/20 rounded-full"></div>
+                            <div className="h-1 flex-1 bg-amber-500/20 rounded-full"></div>
+                        </div>
 
-                {/* Input Details */}
-                <div className="mb-6 space-y-4">
-                    <div>
-                        <label className="block text-sm font-medium text-slate-400 mb-1">Case Title / Type</label>
-                        <input
-                            type="text"
-                            className="w-full bg-slate-800 border-slate-700 rounded-lg px-4 py-3 text-white focus:ring-2 focus:ring-indigo-500 outline-none"
-                            placeholder="e.g. Traffic Violation, Property Dispute"
-                            value={caseTitle}
-                            onChange={(e) => setCaseTitle(e.target.value)}
-                            disabled={uploadStatus === "success"}
-                        />
-                    </div>
-                </div>
-
-                {/* Camera Viewfinder */}
-                <div className="relative flex-1 bg-black rounded-2xl overflow-hidden shadow-2xl border border-slate-800 mb-6 min-h-[400px]">
-                    {!capturedImage ? (
-                        <>
-                            <video
-                                ref={videoRef}
-                                autoPlay
-                                playsInline
-                                className="absolute inset-0 w-full h-full object-cover"
-                            />
-                            <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-                                <div className="w-64 h-64 border-2 border-white/30 rounded-lg"></div>
+                        {/* Input Details */}
+                        <div className="mb-6 space-y-4">
+                            <div>
+                                <label className="block text-sm font-medium text-slate-400 mb-1">Case Title / Type</label>
+                                <input
+                                    type="text"
+                                    className="w-full bg-slate-800 border-slate-700 rounded-lg px-4 py-3 text-white focus:ring-2 focus:ring-indigo-500 outline-none"
+                                    placeholder="e.g. Traffic Violation, Property Dispute"
+                                    value={caseTitle}
+                                    onChange={(e) => setCaseTitle(e.target.value)}
+                                    disabled={uploadStatus === "success"}
+                                />
                             </div>
+                        </div>
 
-                            {/* Capture Button */}
-                            <div className="absolute bottom-6 left-0 right-0 flex justify-center z-10">
-                                <button
-                                    onClick={capturePhoto}
-                                    className="h-20 w-20 rounded-full border-4 border-white flex items-center justify-center bg-white/20 active:scale-95 transition-transform"
-                                >
-                                    <div className="h-16 w-16 rounded-full bg-white"></div>
-                                </button>
-                            </div>
-                        </>
-                    ) : (
-                        <>
-                            <img src={capturedImage} alt="Captured" className="absolute inset-0 w-full h-full object-cover" />
-                            <div className="absolute inset-0 bg-black/40 flex items-center justify-center">
-                                {uploadStatus === "success" && (
-                                    <div className="bg-emerald-500/90 text-white px-6 py-4 rounded-xl flex flex-col items-center animate-in zoom-in">
-                                        <CheckCircle className="h-10 w-10 mb-2" />
-                                        <span className="font-bold">Filing Successful</span>
-                                        <span className="text-xs opacity-90">Hash generated & stored</span>
+                        {/* Camera Viewfinder */}
+                        <div className="relative flex-1 bg-black rounded-2xl overflow-hidden shadow-2xl border border-slate-800 mb-6 min-h-[400px]">
+                            {!capturedImage ? (
+                                <>
+                                    <video
+                                        ref={videoRef}
+                                        autoPlay
+                                        playsInline
+                                        className="absolute inset-0 w-full h-full object-cover"
+                                    />
+                                    <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+                                        <div className="w-64 h-64 border-2 border-white/30 rounded-lg"></div>
                                     </div>
-                                )}
-                                {uploadStatus === "error" && (
-                                    <div className="bg-red-500/90 text-white px-6 py-4 rounded-xl flex flex-col items-center">
-                                        <AlertCircle className="h-10 w-10 mb-2" />
-                                        <span className="font-bold">Upload Failed</span>
-                                    </div>
-                                )}
-                            </div>
-                            <div className="absolute bottom-6 left-0 right-0 flex justify-center gap-4 z-10">
-                                {uploadStatus !== "success" && (
-                                    <button
-                                        onClick={retakePhoto}
-                                        className="px-6 py-3 rounded-full bg-white text-slate-900 font-bold hover:bg-slate-200 transition-colors"
-                                    >
-                                        Retake
-                                    </button>
-                                )}
-                            </div>
-                        </>
-                    )}
-                    <canvas ref={canvasRef} className="hidden" />
-                </div>
 
-                {/* Submit Button */}
-                {capturedImage && uploadStatus !== "success" && (
-                    <button
-                        onClick={submitCase}
-                        disabled={isSubmitting}
-                        className="w-full py-4 rounded-xl bg-indigo-600 text-white font-bold text-lg hover:bg-indigo-500 transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
-                    >
-                        {isSubmitting ? (
-                            <span>Verifying & Uploading...</span>
-                        ) : (
-                            <>
-                                <Upload className="h-5 w-5" />
-                                <span>Secure Submit</span>
-                            </>
+                                    <div className="absolute bottom-6 left-0 right-0 flex justify-center z-10">
+                                        <button
+                                            onClick={capturePhoto}
+                                            className="h-20 w-20 rounded-full border-4 border-white flex items-center justify-center bg-white/20 active:scale-95 transition-transform"
+                                        >
+                                            <div className="h-16 w-16 rounded-full bg-white"></div>
+                                        </button>
+                                    </div>
+                                </>
+                            ) : (
+                                <>
+                                    <img src={capturedImage} alt="Captured" className="absolute inset-0 w-full h-full object-cover" />
+                                    <div className="absolute inset-0 bg-black/40 flex items-center justify-center">
+                                        {uploadStatus === "success" && (
+                                            <div className="bg-emerald-500/90 text-white px-6 py-4 rounded-xl flex flex-col items-center animate-in zoom-in">
+                                                <CheckCircle className="h-10 w-10 mb-2" />
+                                                <span className="font-bold">Filing Successful</span>
+                                                <span className="text-xs opacity-90">Hash generated & stored</span>
+                                            </div>
+                                        )}
+                                        {uploadStatus === "error" && (
+                                            <div className="bg-red-500/90 text-white px-6 py-4 rounded-xl flex flex-col items-center">
+                                                <AlertCircle className="h-10 w-10 mb-2" />
+                                                <span className="font-bold">Upload Failed</span>
+                                            </div>
+                                        )}
+                                    </div>
+                                    <div className="absolute bottom-6 left-0 right-0 flex justify-center gap-4 z-10">
+                                        {uploadStatus !== "success" && (
+                                            <button
+                                                onClick={retakePhoto}
+                                                className="px-6 py-3 rounded-full bg-white text-slate-900 font-bold hover:bg-slate-200 transition-colors"
+                                            >
+                                                Retake
+                                            </button>
+                                        )}
+                                    </div>
+                                </>
+                            )}
+                            <canvas ref={canvasRef} className="hidden" />
+                        </div>
+
+                        {/* Submit Button */}
+                        {capturedImage && uploadStatus !== "success" && (
+                            <button
+                                onClick={processWithAI}
+                                disabled={isExtracting}
+                                className="w-full py-4 rounded-xl bg-indigo-600 text-white font-bold text-lg hover:bg-indigo-500 transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
+                            >
+                                {isExtracting ? (
+                                    <>
+                                        <Loader2 className="animate-spin h-5 w-5" />
+                                        <span>Extracting AI Data...</span>
+                                    </>
+                                ) : (
+                                    <>
+                                        <Upload className="h-5 w-5" />
+                                        <span>Process with Vision AI</span>
+                                    </>
+                                )}
+                            </button>
                         )}
-                    </button>
-                )}
 
-                {uploadStatus === "success" && (
-                    <Link
-                        href="/"
-                        className="w-full py-4 rounded-xl bg-slate-800 text-white font-bold text-lg hover:bg-slate-700 transition-colors flex items-center justify-center"
-                    >
-                        Return to Home
-                    </Link>
+                        {uploadStatus === "success" && (
+                            <Link
+                                href="/"
+                                className="w-full py-4 rounded-xl bg-slate-800 text-white font-bold text-lg hover:bg-slate-700 transition-colors flex items-center justify-center"
+                            >
+                                Return to Home
+                            </Link>
+                        )}
+                    </div>
+                ) : (
+                    <div className="w-full animate-in slide-in-from-bottom-8 duration-700">
+                        {isSubmitting ? (
+                            <div className="flex flex-col items-center justify-center py-20">
+                                <Loader2 className="animate-spin h-12 w-12 text-indigo-500 mb-4" />
+                                <h2 className="text-xl font-bold">Verifying & Uploading...</h2>
+                            </div>
+                        ) : (
+                            <DocumentForm 
+                                initialData={ocrData} 
+                                onSubmit={submitCase} 
+                            />
+                        )}
+                    </div>
                 )}
-
             </main>
         </div>
     );

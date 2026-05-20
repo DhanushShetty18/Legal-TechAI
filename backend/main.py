@@ -22,7 +22,7 @@ app = FastAPI(
     version="0.1.0",
 )
 
-from routers import demo, ai, rag, inconsistency, ingest, summarizer
+from routers import demo, ai, rag, inconsistency, ingest, summarizer, ocr_extract
 import ingestion
 
 app.include_router(demo.router)
@@ -32,6 +32,7 @@ app.include_router(rag.router)
 app.include_router(inconsistency.router, prefix="/inconsistency")
 app.include_router(ingest.router)
 app.include_router(summarizer.router)
+app.include_router(ocr_extract.router)
 
 # Configure CORS
 app.add_middleware(
