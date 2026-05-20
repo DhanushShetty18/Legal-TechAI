@@ -4,7 +4,7 @@ from fastapi.middleware.cors import CORSMiddleware
 import time
 import logging
 from sqlalchemy.orm import Session
-from typing import List
+from typing import List, Optional
 import shutil
 import os
 import hashlib
