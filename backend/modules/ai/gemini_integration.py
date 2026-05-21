@@ -20,21 +20,46 @@ if api_key:
 else:
     logger.warning("GEMINI_API_KEY is not set. Gemini API calls will fail.")
 
-# Retry decorator
-def retry_on_failure(retries=3, delay=2):
+from google.api_core.exceptions import ResourceExhausted, ServiceUnavailable
+import random
+
+class AIServiceAtCapacityError(Exception):
+    """Custom exception raised when the Vision AI (Gemini) is at capacity."""
+    pass
+
+# Retry decorator with Exponential Backoff and Jitter
+def retry_on_failure(retries=3, base_delay=2):
+    """
+    Retries the decorated function upon failure.
+    Uses exponential backoff with jitter to gracefully handle rate limits.
+    """
     def decorator(func):
         @wraps(func)
         def wrapper(*args, **kwargs):
             last_exception = None
-            for attempt in range(retries):
+            for attempt in range(retries + 1):
                 try:
                     return func(*args, **kwargs)
+                except (ResourceExhausted, ServiceUnavailable) as e:
+                    last_exception = e
+                    if attempt < retries:
+                        # Exponential backoff: 2, 4, 8 seconds + random jitter
+                        delay = base_delay * (2 ** attempt) + random.uniform(0, 1)
+                        logger.warning(f"Rate limit or service unavailable hit for {func.__name__} (attempt {attempt + 1}). Retrying in {delay:.2f}s...")
+                        time.sleep(delay)
+                    else:
+                        logger.error(f"All {retries} retries exhausted for {func.__name__} due to capacity constraints.")
+                        # Fail gracefully with a specific error message expected by the frontend
+                        raise AIServiceAtCapacityError("Vision AI is currently at capacity. Please try again in 30 seconds.")
                 except Exception as e:
                     last_exception = e
-                    logger.error(f"Attempt {attempt + 1} failed for {func.__name__}: {str(e)}")
-                    if attempt < retries - 1:
+                    if attempt < retries:
+                        delay = base_delay * (2 ** attempt) + random.uniform(0, 1)
+                        logger.warning(f"Attempt {attempt + 1} failed for {func.__name__}: {str(e)}. Retrying in {delay:.2f}s...")
                         time.sleep(delay)
-            logger.error(f"All {retries} attempts failed for {func.__name__}")
+                    else:
+                        logger.error(f"All {retries} attempts failed for {func.__name__}")
+                        raise
             raise last_exception
         return wrapper
     return decorator

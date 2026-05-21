@@ -13,9 +13,18 @@ import sys
 import crud, models, schemas
 from database import SessionLocal, engine
 
-# Create the database tables
+# ==========================================
+# DATABASE INITIALIZATION
+# ==========================================
+# This command automatically creates all database tables defined in models.py
+# based on our SQLAlchemy declarative base. If the tables already exist, it skips them.
 models.Base.metadata.create_all(bind=engine)
 
+# ==========================================
+# FASTAPI APPLICATION INSTANCE
+# ==========================================
+# We initialize the FastAPI application here. The title and description 
+# will automatically appear in the interactive Swagger UI documentation at /docs
 app = FastAPI(
     title="Legal-TechAI API",
     description="Backend API for Legal-TechAI: A National-Scale Digital Judicial Infrastructure",
@@ -25,6 +34,11 @@ app = FastAPI(
 from routers import demo, ai, rag, inconsistency, ingest, summarizer, ocr_extract
 import ingestion
 
+# ==========================================
+# ROUTER INCLUSION (MODULARITY)
+# ==========================================
+# By using APIRouter, we can split our application across multiple files.
+# This keeps main.py clean and organizes related endpoints together.
 app.include_router(demo.router)
 app.include_router(ai.router)
 app.include_router(ingestion.router)
@@ -34,10 +48,14 @@ app.include_router(ingest.router)
 app.include_router(summarizer.router)
 app.include_router(ocr_extract.router, prefix="/ocr-extract")
 
-# Configure CORS
+# ==========================================
+# CORS (Cross-Origin Resource Sharing)
+# ==========================================
+# This middleware allows our frontend (running on a different domain or port, like Vercel)
+# to securely communicate with this backend API without browser security blocks.
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=["*"], # In production, restrict this to specific domain URLs!
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -120,7 +138,7 @@ def get_case_summary(case_id: int, db: Session = Depends(get_db)):
     if not case:
         raise HTTPException(status_code=404, detail="Case not found")
     
-    from modules.ai.gemini_integration import summarize_legal_document
+    from modules.ai.gemini_integration import summarize_legal_document, AIServiceAtCapacityError
     
     # Construct case text
     case_title = case.title or "Untitled Case"
@@ -130,6 +148,8 @@ def get_case_summary(case_id: int, db: Session = Depends(get_db)):
     try:
         summary_result = summarize_legal_document(case_text)
         return summary_result
+    except AIServiceAtCapacityError as e:
+        return JSONResponse(status_code=503, content={"status": "error", "message": str(e)})
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"AI Summarization failed: {str(e)}")
 

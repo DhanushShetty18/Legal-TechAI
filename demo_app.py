@@ -6,12 +6,15 @@ import time
 import json
 from datetime import datetime
 
-# Load environment variables
+# Load environment variables from a .env file into the system's environment
+# This is a best practice to keep secrets (like API keys and URLs) out of source code
 load_dotenv()
 
+# We fetch the backend URL from environment variables, defaulting to a production URL if not set
 BACKEND_URL = os.getenv("BACKEND_URL", "https://legal-techai.onrender.com")
 
-# Configure page
+# Configure the Streamlit page layout and metadata
+# This must be the first Streamlit command called in the script
 st.set_page_config(
     page_title="Legal-TechAI Demo",
     page_icon="⚖️",
@@ -61,11 +64,16 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-# Sidebar
+# ==========================================
+# SIDEBAR NAVIGATION
+# ==========================================
+# The sidebar provides a navigation menu for the user to switch between different tools.
 st.sidebar.markdown("<h1 style='text-align: center;'>⚖️ Legal-TechAI</h1>", unsafe_allow_html=True)
 st.sidebar.markdown("<p style='text-align: center; font-style: italic; color: #aaa;'>The pipe that justice flows through</p>", unsafe_allow_html=True)
 st.sidebar.divider()
 
+# Streamlit radio buttons automatically create state variables.
+# The selected value will dictate which page is rendered below.
 page = st.sidebar.radio("Navigation", [
     "Case Summarizer",
     "Inconsistency Detector",

@@ -5,13 +5,17 @@ import Link from "next/link";
 import { Camera, ChevronLeft, Upload, CheckCircle, AlertCircle, Loader2, Image as ImageIcon, RefreshCw } from "lucide-react";
 import DocumentForm, { OCRData } from "@/components/DocumentForm";
 
+// ==========================================
 // STATE MACHINE EXACTLY AS REQUESTED
+// ==========================================
+// A State Machine is a pattern that restricts the UI to specific modes.
+// This prevents bugs like submitting before scanning finishes.
 type FlowState = 
-    | 'IDLE' 
-    | 'CAPTURE' 
-    | 'PROCESSING' 
-    | 'REVIEW' 
-    | 'SUBMITTED';
+    | 'IDLE'        // Waiting for user to select camera or upload 
+    | 'CAPTURE'     // Camera is open, or file upload dialog is ready
+    | 'PROCESSING'  // OCR is processing the image via the backend API
+    | 'REVIEW'      // AI data is returned, showing the DocumentForm to review
+    | 'SUBMITTED';  // Form has been successfully sent to database
 
 export default function FileCasePage() {
     const videoRef = useRef<HTMLVideoElement>(null);
@@ -23,7 +27,9 @@ export default function FileCasePage() {
     const [caseTitle, setCaseTitle] = useState("");
     const [ocrData, setOcrData] = useState<OCRData | null>(null);
     
-    // Strict State Machine
+    // ==========================================
+    // STRICT STATE MACHINE TRACKING
+    // ==========================================
     const [flowState, setFlowState] = useState<FlowState>('IDLE');
     const [error, setError] = useState<string | null>(null);
     const [showFileUpload, setShowFileUpload] = useState(false);
@@ -135,8 +141,11 @@ export default function FileCasePage() {
     };
 
     const handleFinalSubmit = async (finalOcrData: OCRData) => {
-        // PROBLEM 3 FIX: Submission logic is completely locked behind STATE 4
-        // which guarantees that ocrData exists.
+        // ==========================================
+        // PROBLEM 3 FIX: SUBMISSION LOCK
+        // ==========================================
+        // Submission logic is completely locked behind STATE 4 (REVIEW).
+        // This guarantees that `ocrData` exists and the user has reviewed it.
         setIsSubmitting(true);
         setError(null);
         
@@ -371,6 +380,7 @@ export default function FileCasePage() {
                         <DocumentForm 
                             initialData={ocrData} 
                             onSubmit={handleFinalSubmit} 
+                            isSubmitting={isSubmitting}
                         />
                     </div>
                 )}

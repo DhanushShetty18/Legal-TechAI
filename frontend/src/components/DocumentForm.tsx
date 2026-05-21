@@ -21,9 +21,10 @@ export interface OCRData {
 interface DocumentFormProps {
   initialData: OCRData;
   onSubmit: (data: OCRData) => void;
+  isSubmitting?: boolean;
 }
 
-export default function DocumentForm({ initialData, onSubmit }: DocumentFormProps) {
+export default function DocumentForm({ initialData, onSubmit, isSubmitting = false }: DocumentFormProps) {
   const [formData, setFormData] = useState<OCRData>(initialData);
   const [aiPopulated, setAiPopulated] = useState<Record<keyof OCRData, boolean>>({} as any);
 
@@ -49,7 +50,21 @@ export default function DocumentForm({ initialData, onSubmit }: DocumentFormProp
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+    if (isSubmitting) return;
     onSubmit(formData);
+  };
+  
+  // Validate if all required fields are filled to lock the submit button
+  const isFormValid = () => {
+    return !!(
+      formData.firstName &&
+      formData.lastName &&
+      formData.addressStreet1 &&
+      formData.city &&
+      formData.stateProvince &&
+      formData.postalZipCode &&
+      formData.mobile
+    );
   };
 
   const renderInput = (name: keyof OCRData, label: string, type: string = "text", required: boolean = false) => {
@@ -144,9 +159,10 @@ export default function DocumentForm({ initialData, onSubmit }: DocumentFormProp
           </button>
           <button
             type="submit"
-            className="px-8 py-2.5 rounded-lg font-semibold text-white bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 shadow-lg shadow-blue-500/25 transition-all active:scale-[0.98]"
+            disabled={isSubmitting || !isFormValid()}
+            className="px-8 py-2.5 rounded-lg font-semibold text-white bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 shadow-lg shadow-blue-500/25 transition-all active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
           >
-            Submit & Store
+            {isSubmitting ? "Submitting..." : "Secure Submit"}
           </button>
         </div>
       </div>

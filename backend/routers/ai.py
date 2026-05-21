@@ -5,8 +5,10 @@ from typing import Dict, Any, List
 from modules.ai.gemini_integration import (
     summarize_legal_document,
     extract_claims,
-    answer_legal_question
+    answer_legal_question,
+    AIServiceAtCapacityError
 )
+from fastapi.responses import JSONResponse
 
 router = APIRouter(
     prefix="/ai",
@@ -32,6 +34,8 @@ async def api_summarize_legal_document(request: SummarizeRequest):
     try:
         result = summarize_legal_document(request.text)
         return result
+    except AIServiceAtCapacityError as e:
+        return JSONResponse(status_code=503, content={"status": "error", "message": str(e)})
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"AI Summarization failed: {str(e)}")
 
@@ -43,6 +47,8 @@ async def api_extract_claims(request: ExtractClaimsRequest):
     try:
         result = extract_claims(request.text)
         return result
+    except AIServiceAtCapacityError as e:
+        return JSONResponse(status_code=503, content={"status": "error", "message": str(e)})
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Claim extraction failed: {str(e)}")
 
@@ -54,5 +60,7 @@ async def api_answer_legal_question(request: AnswerQuestionRequest):
     try:
         result = answer_legal_question(request.question, request.context)
         return result
+    except AIServiceAtCapacityError as e:
+        return JSONResponse(status_code=503, content={"status": "error", "message": str(e)})
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Question answering failed: {str(e)}")
