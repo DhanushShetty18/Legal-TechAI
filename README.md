@@ -22,9 +22,12 @@ Legal-TechAI operates on a modular, microservices-based architecture to ensure a
 
 ## 🛠️ Repository Layout
 
-├── legal-techai-frontend/      # Next.js Application Core
-├── legal-techai-gateway/       # Spring Boot API Gateway (Under Active Dev)
-└── legal-techai-engine/        # FastAPI / Python Machine Learning Microservice
+├── legal-techai-frontend/
+# Next.js Application Core
+├── legal-techai-gateway/
+# Spring Boot API Gateway (Under Active Dev)
+└── legal-techai-engine/
+# FastAPI / Python Machine Learning Microservice
 
 
 ## 🚀 Core MVP Technical Workflows (Active Sprint Targets)
