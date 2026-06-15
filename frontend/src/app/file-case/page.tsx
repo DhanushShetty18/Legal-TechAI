@@ -62,6 +62,7 @@ export default function FileCasePage() {
             setStream(stream); // Keep track for stopCamera
             if (videoRef.current) {
                 videoRef.current.srcObject = stream;
+                videoRef.current.play().catch(e => console.error("Play error:", e));
             }
         } catch (err) {
             setShowFileUpload(true);
@@ -107,10 +108,9 @@ export default function FileCasePage() {
                     if (blob) {
                         setImageBlob(blob);
                         stopCamera();
-                        // PROBLEM 2 FIX: Automatically go to STATE 3
                         extractFromImage(blob); 
                     }
-                }, "image/jpeg", 0.9);
+                }, "image/jpeg", 0.95);
             }
         }
     };
@@ -120,12 +120,17 @@ export default function FileCasePage() {
         setError(null);
         try {
             const formData = new FormData();
-            formData.append('file', imageBlob, 'document.jpg');
+            formData.append('file', imageBlob, 'capture.jpg');
             const response = await fetch(
                 'https://legal-techai.onrender.com/ocr-extract',
                 { method: 'POST', body: formData }
             );
-            if (!response.ok) throw new Error('OCR failed');
+            
+            if (!response.ok) {
+                const errorText = await response.text();
+                console.error("OCR Backend Error Response:", errorText);
+                throw new Error(`OCR failed: ${response.status} ${errorText}`);
+            }
             
             const data: OCRData = await response.json();
             setOcrData(data);
