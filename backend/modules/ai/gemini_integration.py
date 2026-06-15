@@ -28,7 +28,7 @@ class AIServiceAtCapacityError(Exception):
     pass
 
 # Retry decorator with Exponential Backoff and Jitter
-def retry_on_failure(retries=3, base_delay=2):
+def retry_on_failure(retries=3, delay=2):
     """
     Retries the decorated function upon failure.
     Uses exponential backoff with jitter to gracefully handle rate limits.
@@ -44,7 +44,7 @@ def retry_on_failure(retries=3, base_delay=2):
                     last_exception = e
                     if attempt < retries:
                         # Exponential backoff: 2, 4, 8 seconds + random jitter
-                        delay = base_delay * (2 ** attempt) + random.uniform(0, 1)
+                        delay = delay * (2 ** attempt) + random.uniform(0, 1)
                         logger.warning(f"Rate limit or service unavailable hit for {func.__name__} (attempt {attempt + 1}). Retrying in {delay:.2f}s...")
                         time.sleep(delay)
                     else:
@@ -54,7 +54,7 @@ def retry_on_failure(retries=3, base_delay=2):
                 except Exception as e:
                     last_exception = e
                     if attempt < retries:
-                        delay = base_delay * (2 ** attempt) + random.uniform(0, 1)
+                        delay = delay * (2 ** attempt) + random.uniform(0, 1)
                         logger.warning(f"Attempt {attempt + 1} failed for {func.__name__}: {str(e)}. Retrying in {delay:.2f}s...")
                         time.sleep(delay)
                     else:
