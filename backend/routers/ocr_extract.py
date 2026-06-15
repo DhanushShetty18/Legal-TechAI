@@ -22,7 +22,7 @@ class OCRResponse(BaseModel):
     herdNo: Optional[str] = None
     email: Optional[str] = None
 
-@router.post("/", response_model=OCRResponse)
+@router.post("", response_model=OCRResponse)
 async def extract_ocr_data(file: UploadFile = File(...)):
     if not file.content_type.startswith("image/"):
         raise HTTPException(status_code=400, detail="File must be an image.")

@@ -46,7 +46,7 @@ def extract_document_data(image_blob: bytes, mime_type: str = "image/jpeg") -> D
 
     Return EXACTLY as JSON.
     """
-    model = genai.GenerativeModel(model_name="gemini-2.0-flash", system_instruction=system_prompt)
+    model = genai.GenerativeModel(model_name="gemini-2.5-flash", system_instruction=system_prompt)
     
     # Construct the image part for the Gemini API
     image_part = {

@@ -3,7 +3,7 @@ from modules.infrastructure.schemas import Case, Evidence
 
 class CaseSummarizer:
     def __init__(self):
-        self.model_name = "gemini-2.0-flash"
+        self.model_name = "gemini-2.5-flash"
 
     def summarize_case(self, case_data: Dict[str, Any]) -> str:
         """
