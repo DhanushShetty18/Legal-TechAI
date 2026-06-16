@@ -2,7 +2,7 @@ import os
 import sys
 
 # Set key
-os.environ["GEMINI_API_KEY"] = "AIzaSyBQgm_DzAJ5d5pTPQogZA5_4XDEOjkxk98"
+os.environ["GEMINI_API_KEY"] = "os.getenv("GEMINI_API_KEY")"
 
 from modules.ocr_extractor import extract_document_data
 import google.generativeai as genai

@@ -1,8 +1,8 @@
 from fastapi import APIRouter, File, UploadFile, HTTPException, Query
-from typing import List
+from typing import Dict, List
 import fitz  # PyMuPDF
 from modules.inconsistency.core import InconsistencyEngine
-from modules.inconsistency.schemas import InconsistencyReportWithRanking
+from modules.inconsistency.schemas import FinalContradiction, InconsistencyReportWithRanking
 
 router = APIRouter(
     tags=["Inconsistency Detection"]
@@ -12,6 +12,43 @@ engine = InconsistencyEngine()
 
 # Sort/filter order — does not affect detection, only response shaping.
 SEVERITY_ORDER = {"HIGH": 0, "MEDIUM": 1, "LOW": 2}
+
+# When the same quote pair is flagged under multiple contradiction_types,
+# keep the most decisive one. PHYSICAL_IMPOSSIBILITY is deterministic and
+# strictly stronger evidence than the Gemini-inferred categories.
+TYPE_PRIORITY = {
+    "PHYSICAL_IMPOSSIBILITY": 0,
+    "LOGICAL": 1,
+    "TEMPORAL": 2,
+    "FACTUAL": 3,
+}
+
+
+def _quote_pair_key(c: FinalContradiction) -> frozenset:
+    """Order-independent identity for a contradiction: the two quotes it cites."""
+    return frozenset({c.exact_quote_doc_a.strip(), c.exact_quote_doc_b.strip()})
+
+
+def _type_rank(c: FinalContradiction) -> int:
+    return TYPE_PRIORITY.get(c.contradiction_type.upper(), len(TYPE_PRIORITY))
+
+
+def _dedupe_contradictions(
+    contradictions: List[FinalContradiction],
+) -> List[FinalContradiction]:
+    """
+    Collapse contradictions that cite the same pair of quotes (regardless of
+    explanation wording or A/B order). Keeps the first occurrence's slot, but
+    upgrades its contents in place if a later duplicate has a more decisive
+    contradiction_type (e.g. PHYSICAL_IMPOSSIBILITY beats TEMPORAL).
+    """
+    deduped: Dict[frozenset, FinalContradiction] = {}
+    for c in contradictions:
+        key = _quote_pair_key(c)
+        existing = deduped.get(key)
+        if existing is None or _type_rank(c) < _type_rank(existing):
+            deduped[key] = c
+    return list(deduped.values())
 
 
 @router.post("/detect-inconsistencies", response_model=InconsistencyReportWithRanking)
@@ -82,9 +119,14 @@ async def detect_inconsistencies(
     try:
         report = engine.process(documents_data)
 
+        # Collapse duplicate contradictions citing the same quote pair
+        # (e.g. the same Mumbai/Pune clash reported repeatedly under
+        # different contradiction_types) before sorting/filtering.
+        unique_contradictions = _dedupe_contradictions(report.contradictions)
+
         # Sort HIGH -> MEDIUM -> LOW (does not touch detection results).
         sorted_contradictions = sorted(
-            report.contradictions,
+            unique_contradictions,
             key=lambda c: SEVERITY_ORDER.get(c.severity.upper(), len(SEVERITY_ORDER)),
         )
 
@@ -97,9 +139,13 @@ async def detect_inconsistencies(
         ]
 
         return InconsistencyReportWithRanking(
-            **report.model_dump(exclude={"contradictions"}),
+            **report.model_dump(exclude={"contradictions", "total_contradictions", "high_severity"}),
             contradictions=sorted_contradictions,
             top_contradictions=top_contradictions,
+            total_contradictions=len(sorted_contradictions),
+            high_severity=sum(
+                1 for c in sorted_contradictions if c.severity.upper() == "HIGH"
+            ),
         )
     except RuntimeError as e:
         # Missing API key or configuration error
