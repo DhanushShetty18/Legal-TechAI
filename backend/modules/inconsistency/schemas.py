@@ -90,3 +90,17 @@ class InconsistencyReport(BaseModel):
     high_severity: int
     contradictions: List[FinalContradiction]
     clean_facts: List[CleanFact]
+
+
+# --- API RESPONSE: adds sorting/filtering on top of the existing report ---
+# NOTE: This does NOT change anything Gemini generates — it's populated by
+# the router after `InconsistencyReport` has already been produced.
+
+class InconsistencyReportWithRanking(InconsistencyReport):
+    top_contradictions: List[FinalContradiction] = Field(
+        default_factory=list,
+        description=(
+            "Subset of `contradictions` at or above the requested "
+            "min_severity, sorted HIGH -> MEDIUM -> LOW."
+        ),
+    )
