@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Scale, BrainCircuit, Activity, FileSearch, ShieldCheck } from "lucide-react";
+import { Scale, BrainCircuit, Activity, FileSearch, ShieldCheck, Landmark } from "lucide-react";
 
 export default function AppSidebar() {
     const pathname = usePathname();
@@ -10,6 +10,7 @@ export default function AppSidebar() {
     const links = [
         { href: "/inconsistency", label: "Inconsistency Detector", icon: FileSearch },
         { href: "/legal-qa", label: "Legal Q&A (BNS/BNSS/BSA)", icon: BrainCircuit },
+        { href: "/stamp-duty", label: "Stamp Duty Engine", icon: Landmark },
         { href: "/api-explorer", label: "API Explorer", icon: Activity },
         { href: "/judge-dashboard", label: "Judge Dashboard", icon: Scale },
     ];
@@ -24,14 +25,13 @@ export default function AppSidebar() {
                     const Icon = link.icon;
                     const isActive = pathname === link.href;
                     return (
-                        <Link 
-                            key={link.href} 
+                        <Link
+                            key={link.href}
                             href={link.href}
-                            className={`flex items-center gap-3 p-3 rounded-lg transition-colors ${
-                                isActive 
-                                ? "bg-indigo-600 text-white font-medium" 
-                                : "hover:bg-slate-800 text-slate-400 hover:text-white"
-                            }`}
+                            className={`flex items-center gap-3 p-3 rounded-lg transition-colors ${isActive
+                                    ? "bg-indigo-600 text-white font-medium"
+                                    : "hover:bg-slate-800 text-slate-400 hover:text-white"
+                                }`}
                         >
                             <Icon className="h-5 w-5" />
                             {link.label}

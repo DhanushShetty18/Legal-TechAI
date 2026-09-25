@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { Camera, Search, ShieldCheck, Scale, FileSearch, BrainCircuit, Activity } from "lucide-react";
+import { Camera, Search, ShieldCheck, Scale, FileSearch, BrainCircuit, Activity, Landmark } from "lucide-react";
 
 export default function Home() {
   return (
@@ -84,7 +84,7 @@ export default function Home() {
             <h2 className="text-sm font-bold uppercase tracking-widest text-slate-400">Investor Showcase Modules</h2>
             <div className="h-px bg-slate-200 flex-1"></div>
           </div>
-          
+
           <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-4">
             <Link href="/inconsistency" className="group relative overflow-hidden rounded-2xl border border-slate-200 bg-white p-6 hover:border-blue-500 hover:shadow-xl transition-all duration-300 transform hover:-translate-y-1">
               <div className="absolute top-0 right-0 -mr-6 -mt-6 h-24 w-24 rounded-full bg-blue-50 group-hover:bg-blue-100 transition-colors"></div>
@@ -127,6 +127,17 @@ export default function Home() {
                 </div>
                 <h3 className="text-lg font-bold text-slate-900 mb-2">Judge Dashboard</h3>
                 <p className="text-slate-500 text-xs">Judicial interface for viewing AI-generated case summaries and readiness.</p>
+              </div>
+            </Link>
+
+            <Link href="/stamp-duty" className="group relative overflow-hidden rounded-2xl border border-slate-200 bg-white p-6 hover:border-emerald-500 hover:shadow-xl transition-all duration-300 transform hover:-translate-y-1">
+              <div className="absolute top-0 right-0 -mr-6 -mt-6 h-24 w-24 rounded-full bg-emerald-50 group-hover:bg-emerald-100 transition-colors"></div>
+              <div className="relative z-10 flex flex-col items-start text-left">
+                <div className="mb-4 rounded-xl bg-emerald-600 p-3 text-white shadow-lg shadow-emerald-200">
+                  <Landmark className="h-5 w-5" />
+                </div>
+                <h3 className="text-lg font-bold text-slate-900 mb-2">Stamp Duty Engine</h3>
+                <p className="text-slate-500 text-xs">Calculate stamp duty & registration charges for any Indian state instantly.</p>
               </div>
             </Link>
           </div>
