@@ -1,0 +1,27 @@
+{
+  "name": "Legal-TechAI",
+  "install": "bash .cursor/scripts/cloud-agent-install.sh",
+  "start": "bash .cursor/scripts/cloud-agent-start.sh",
+  "ports": [
+    {
+      "name": "FastAPI backend",
+      "port": 8000
+    },
+    {
+      "name": "Next.js frontend",
+      "port": 3001
+    }
+  ],
+  "terminals": [
+    {
+      "name": "backend",
+      "command": "export PATH=\"$HOME/.local/bin:$PATH\" && cd backend && uvicorn main:app --host 0.0.0.0 --port 8000 --reload",
+      "description": "FastAPI API (Swagger at /docs)"
+    },
+    {
+      "name": "frontend",
+      "command": "cd frontend && npm run dev -- -p 3001 -H 0.0.0.0",
+      "description": "Next.js dev server"
+    }
+  ]
+}
