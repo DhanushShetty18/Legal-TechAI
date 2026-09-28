@@ -11,7 +11,7 @@ import hashlib
 import sys
 
 import crud, models, schemas
-from database import SessionLocal, engine
+from database import engine, get_db
 
 # ==========================================
 # DATABASE INITIALIZATION
@@ -81,15 +81,6 @@ async def global_exception_handler(request: Request, exc: Exception):
         status_code=500,
         content={"success": False, "data": None, "error": str(exc)}
     )
-
-
-# Dependency
-def get_db():
-    db = SessionLocal()
-    try:
-        yield db
-    finally:
-        db.close()
 
 @app.get("/")
 def read_root():
