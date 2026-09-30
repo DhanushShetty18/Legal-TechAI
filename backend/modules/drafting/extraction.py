@@ -103,15 +103,25 @@ def _clean(value: Any) -> Optional[str]:
     return text
 
 
-def reconcile_identifiers(fields: Dict[str, Any], raw_text: str) -> Dict[str, Any]:
+def reconcile_identifiers(
+    fields: Dict[str, Any],
+    raw_text: str,
+    allowed_keys: Optional[Iterable[str]] = None,
+) -> Dict[str, Any]:
     """Re-derive PAN / Aadhaar / pincode from the transcribed text.
 
     A pattern match in the raw text beats the model's own structured answer,
     because the failure mode we care about is a confidently mis-transcribed
     identifier rather than a missing one.
+
+    ``allowed_keys`` scopes the rescue to the fields the document is actually
+    about. Without it, a vendor's ID card carrying a single PAN would have that
+    PAN attributed to the purchaser as well - a wrong identifier for a party to
+    a registered deed, and one that would pass the review form as "filled".
     """
     text = (raw_text or "").upper()
     result = dict(fields)
+    in_scope = None if allowed_keys is None else set(allowed_keys)
 
     pans = _PAN_RE.findall(text)
     aadhaars = [a for a in _AADHAAR_RE.findall(raw_text or "")
@@ -119,6 +129,9 @@ def reconcile_identifiers(fields: Dict[str, Any], raw_text: str) -> Dict[str, An
 
     for role in ("vendor", "purchaser"):
         pan_key = f"{role}_pan"
+        aadhaar_key = f"{role}_aadhaar"
+        if in_scope is not None and not {pan_key, aadhaar_key} & in_scope:
+            continue
         claimed = _clean(result.get(pan_key))
         if claimed:
             normalised = normalise_pan(claimed)
@@ -130,7 +143,6 @@ def reconcile_identifiers(fields: Dict[str, Any], raw_text: str) -> Dict[str, An
         elif len(pans) == 1:
             result[pan_key] = pans[0]
 
-        aadhaar_key = f"{role}_aadhaar"
         claimed_aadhaar = _clean(result.get(aadhaar_key))
         source = claimed_aadhaar
         if not source and len(aadhaars) == 1:
@@ -163,7 +175,7 @@ def extract_from_document(
     raw_text = _clean(raw.pop("raw_text", None)) or ""
     fields = {k: _clean(v) for k, v in raw.items() if k in SALE_DEED_FIELD_KEYS}
     fields = {k: v for k, v in fields.items() if v is not None}
-    fields = reconcile_identifiers(fields, raw_text)
+    fields = reconcile_identifiers(fields, raw_text, allowed_keys=target_keys)
     fields = {k: v for k, v in fields.items() if _clean(v) is not None}
 
     logger.info("Extracted %d field(s) from %s", len(fields), doc_id)

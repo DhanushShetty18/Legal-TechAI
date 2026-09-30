@@ -312,6 +312,51 @@ class TestExtraction:
         fields = extraction.reconcile_identifiers({}, "PAN: ABCDE1234F")
         assert fields["vendor_pan"] == "ABCDE1234F"
 
+    def test_a_vendors_pan_is_never_attributed_to_the_purchaser(self):
+        """A vendor's ID card carries one PAN; it belongs to the vendor alone.
+
+        Attributing it to both parties puts a wrong identifier for a party into
+        a registered deed, and it passes the review form as already filled.
+        """
+        fields = extraction.reconcile_identifiers(
+            {},
+            "PERMANENT ACCOUNT NUMBER ABCDE1234F",
+            allowed_keys=document_by_id(SALE_DEED, "vendor_id")["extracts"],
+        )
+        assert fields["vendor_pan"] == "ABCDE1234F"
+        assert "purchaser_pan" not in fields
+
+    def test_a_purchasers_document_fills_only_the_purchasers_identifiers(self):
+        fields = extraction.reconcile_identifiers(
+            {},
+            "PAN ABCDE1234F  AADHAAR 1234 5678 9012",
+            allowed_keys=document_by_id(SALE_DEED, "purchaser_id")["extracts"],
+        )
+        assert fields["purchaser_pan"] == "ABCDE1234F"
+        assert fields["purchaser_aadhaar"] == "XXXX XXXX 9012"
+        assert "vendor_pan" not in fields
+        assert "vendor_aadhaar" not in fields
+
+    def test_a_document_about_neither_party_gains_no_identifiers(self):
+        fields = extraction.reconcile_identifiers(
+            {},
+            "PAN ABCDE1234F",
+            allowed_keys=document_by_id(SALE_DEED, "witness_ids")["extracts"],
+        )
+        assert "vendor_pan" not in fields
+        assert "purchaser_pan" not in fields
+
+    def test_extraction_scopes_identifiers_to_the_uploaded_documents_party(self):
+        """The end-to-end path, which is where this was actually caught."""
+        factory, _ = gemini_returning({
+            "vendor_name": "Ramesh Kumar",
+            "raw_text": "Ramesh Kumar  PAN ABCDE1234F",
+        })
+        with patch("google.generativeai.GenerativeModel", factory):
+            result = extract_from_document(b"jpeg", "image/jpeg", "vendor_id")
+        assert result["fields"]["vendor_pan"] == "ABCDE1234F"
+        assert "purchaser_pan" not in result["fields"]
+
     def test_extraction_failure_is_reported_not_raised(self):
         factory = MagicMock(side_effect=RuntimeError("quota exhausted"))
         with patch("google.generativeai.GenerativeModel", factory), \
