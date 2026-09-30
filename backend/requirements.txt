@@ -10,3 +10,5 @@ pydantic
 httpx
 aiofiles
 chromadb
+reportlab
+python-docx

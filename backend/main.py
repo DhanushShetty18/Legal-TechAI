@@ -31,7 +31,7 @@ app = FastAPI(
     version="0.1.0",
 )
 
-from routers import demo, ai, rag, inconsistency, ingest, summarizer, ocr_extract
+from routers import demo, ai, rag, inconsistency, ingest, summarizer, ocr_extract, drafting
 import ingestion
 
 # ==========================================
@@ -47,6 +47,7 @@ app.include_router(inconsistency.router, prefix="/inconsistency")
 app.include_router(ingest.router)
 app.include_router(summarizer.router)
 app.include_router(ocr_extract.router, prefix="/ocr-extract")
+app.include_router(drafting.router, prefix="/drafting")
 
 # ==========================================
 # CORS (Cross-Origin Resource Sharing)
