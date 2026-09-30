@@ -22,18 +22,39 @@ signature/thumb-impression pages.
 `legal-techai.onrender.com`). `e-filing-updated/` was left untouched.
 
 **Why.** The repository carries two near-identical Next.js trees. The root
-`vercel.json` points its build at `e-filing-updated/frontend`, which suggests
+`vercel.json` pointed its build at `e-filing-updated/frontend`, which suggested
 that is what ships — but it is not. Probing the live site settles it: the served
 `/file-case` page contains the string `Intelligent Case Filing Checklist`, which
-exists only in `frontend/`. The Vercel project therefore has its Root Directory
-set to `frontend` in the dashboard, and the root `vercel.json` is ignored.
-`/stamp-duty` returning 404 live is unrelated — that commit simply had not been
-pushed.
+exists only in `frontend/`.
 
-**Trade-off.** The root `vercel.json` remains misleading. Deleting it risks
-changing the behaviour of a second Vercel project we cannot see from here, so it
-was left alone and documented instead. **This is worth cleaning up** — either
-delete the stale tree or point the config at the tree that actually ships.
+**The deploy was broken, and had been since the restructure.** `/stamp-duty`
+returned 404 live even after that commit reached `main`. Vercel's build log gave
+the reason:
+
+```
+Warning: Could not identify Next.js version, ensure it is defined as a project dependency.
+Error: No Next.js version detected. Make sure your package.json has "next" in
+either "dependencies" or "devDependencies". Also check your Root Directory
+setting matches the directory of your package.json file
+```
+
+The project's Root Directory is the **repository root**, where there is no
+`package.json` at all. Vercel's Next.js detector reads `package.json` at the Root
+Directory, so `"framework": "nextjs"` combined with `cd frontend && npm run build`
+can never work — and `vercel.json` cannot set Root Directory, which is a
+dashboard-only setting. Every deploy since `b786378` had failed, and Vercel kept
+serving the last good deployment, which is why the Stamp Duty page never appeared
+live and why the site looked healthy while being frozen.
+
+**Resolution.** Root Directory set to `frontend` in the Vercel dashboard. Next.js
+is then auto-detected from `frontend/package.json` and no build configuration is
+needed, so the root `vercel.json` was deleted rather than left to re-break the
+deploy if the setting is ever reset.
+
+**Trade-off.** `e-filing-updated/` no longer has any deploy path. It is an
+isolated experiment and needs its own Vercel project. **The duplicate tree is
+still worth deleting** once its Live Compilation Engine work is either merged
+into `frontend/` or abandoned.
 
 ### 2. The statutory clauses are template-locked; only the bespoke passages are model-authored
 
