@@ -46,6 +46,31 @@ Legal-TechAI operates on a modular, microservices-based architecture to ensure a
 * **Objective:** Ensure pre-filing compliance under the new BNS, BNSS, and BSA codes based on case typology.
 * **Pipeline:** User selects case category (e.g., Section 138 Negotiable Instruments Act, domestic disputes) via a dynamic dropdown -> System scans the current localized document payload directory -> Compares active folder files against a mandatory statutory checklist -> Renders a real-time reactive compliance index (Green/Red flags).
 * **Sprint Focus:** Encoding dynamic verification matrices for core procedural frameworks.
+### T4: Live Court-Ready Deed Drafting (Sale Deed)
+* **Objective:** Close the loop after extraction — turn a folder of captured documents into a registrable instrument, drafted on screen, instead of a hydrated form the user still has to take to a draftsman.
+* **Pipeline:** Case-type checklist (20 documents across the five phases of a conveyance) -> camera/upload capture -> per-document extraction scoped to the fields each document actually carries -> editable review that asks only for what could not be read -> SSE generation streaming the deed section by section with a typing animation -> court-ready PDF (A4, 1.6in binding margin, Times, Schedule, boundaries, thumb-impression and witness pages) or editable DOCX.
+* **Correctness stance:** The deed is assembled from a deterministic skeleton mirroring the model draft in `Sale-Deed.pdf`. Only the two recitals and the Schedule description are model-authored; the fifteen operative clauses are template-locked, because a clause that drifts between generations has to be re-registered at the parties' cost. A missing API key, a model failure, a timeout or a stub answer all fall back to precedent wording and still yield a complete deed.
+* **Sprint Focus:** Extending the same engine to a second instrument (Lease Deed / Gift Deed) once a reference draft of comparable authority is available.
+
+See [`DECISIONS.md`](./DECISIONS.md) for the engineering decisions behind this, including the trade-offs accepted.
+
+## 🧪 Running the tests
+
+```bash
+cd backend  && python -m pytest test_drafting.py -v   # 140 tests, drafting engine
+cd frontend && npm test                               # 50 tests, stream + typewriter
+```
+
+Every model call is mocked, so the suites are offline, deterministic and free to run. The degradation paths are covered explicitly: a failed, timed-out or stub-returning model must still produce a complete, registrable deed.
+
+## 🚢 Deployment notes
+
+* **Frontend** → Vercel, from `frontend/`. The Vercel project's **Root Directory must be set to `frontend`**; Next.js is then auto-detected from `frontend/package.json` and no `vercel.json` is needed. A root-level `vercel.json` using `cd frontend && npm run build` does **not** work — Vercel's Next.js detector reads `package.json` at the Root Directory, and there is none at the repository root.
+* **Backend** → Render, from `backend/`. Requires `GEMINI_API_KEY`; without it, extraction is unavailable and drafting falls back to precedent wording.
+* `e-filing-updated/` is an isolated Live Compilation Engine experiment with no deploy path of its own. It is not what serves the production frontend.
+
+## 🔭 Backlog
+
 - [ ] Implement robust **Exponential Backoff with Jitter** on the FastAPI extraction layer to systematically mitigate 429 API rate-limiting thresholds.
 - [ ] Establish the core Spring Boot multi-tenant schema to route data cleanly between distinct trial jurisdictions.
 - [ ] Harden frontend state locks to securely prevent form submission before full semantic parsing is complete.
