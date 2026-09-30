@@ -1,6 +1,6 @@
 {
-  "buildCommand": "cd e-filing-updated/frontend && npm run build",
-  "outputDirectory": "e-filing-updated/frontend/.next",
-  "installCommand": "cd e-filing-updated/frontend && npm install",
+  "buildCommand": "cd frontend && npm run build",
+  "outputDirectory": "frontend/.next",
+  "installCommand": "cd frontend && npm install",
   "framework": "nextjs"
 }
