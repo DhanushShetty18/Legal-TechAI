@@ -81,7 +81,7 @@ export default function Home() {
         <div className="mt-12 w-full max-w-5xl">
           <div className="flex items-center gap-4 mb-6">
             <div className="h-px bg-slate-200 flex-1"></div>
-            <h2 className="text-sm font-bold uppercase tracking-widest text-slate-400">Investor Showcase Modules</h2>
+            <h2 className="text-sm font-bold uppercase tracking-widest text-slate-400">Game Changer Modules</h2>
             <div className="h-px bg-slate-200 flex-1"></div>
           </div>
           
