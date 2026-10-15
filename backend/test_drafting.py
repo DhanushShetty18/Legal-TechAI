@@ -15,14 +15,20 @@ from fastapi.testclient import TestClient
 
 from modules.drafting import (
     DRAFTABLE_CASE_TYPES,
+    GIFT_DEED,
+    GIFT_DEED_FIELDS,
+    GIFT_DEED_FIELD_KEYS,
     SALE_DEED,
     SALE_DEED_FIELD_KEYS,
     build_sections,
     document_by_id,
     estimate_pages,
     extract_from_document,
+    field_keys_for,
+    fields_for,
     merge_extractions,
     missing_required_fields,
+    narrative_sections_for,
     render_plain_text,
     requirements_for,
 )
@@ -82,6 +88,72 @@ FULL_FIELDS = {
     "boundary_west": "Site No. 127",
     "boundary_north": "30 ft. wide road",
     "boundary_south": "Property of Sri Krishna Bhat",
+    "witness_1_name": "Ganesh Shenoy",
+    "witness_1_address": "Bejai, Mangaluru",
+    "witness_2_name": "Latha Nayak",
+    "witness_2_address": "Kankanady, Mangaluru",
+}
+
+
+# Modelled on the reference draft in ``GIFT DEED (50-50).pdf``: a father gifting
+# his 50% undivided share in a society flat to his son, the other 50% staying
+# with the co-owner.
+GIFT_FIELDS = {
+    "place_of_execution": "Mumbai",
+    "date_of_execution": "2026-07-15",
+    "donor_name": "Prakash Hiralal Desai",
+    "donor_father_name": "Hiralal Desai",
+    "donor_age": "79",
+    "donor_occupation": "Retired",
+    "donor_religion": "Hindu",
+    "donor_nationality": "Indian",
+    "donor_address": "Flat No. 101, Vishwashanti, Versova, Andheri (W), Mumbai 400061",
+    "donor_pan": "AGEPD9693G",
+    "donor_aadhaar": "123412341234",
+    "donee_name": "Vikas Prakash Desai",
+    "donee_father_name": "Prakash Hiralal Desai",
+    "donee_age": "47",
+    "donee_occupation": "Service",
+    "donee_religion": "Hindu",
+    "donee_nationality": "United States of America",
+    "donee_address": "1420 Oakmont Drive, Plano, Texas 75024, U.S.A.",
+    "donee_pan": "ZYXWV9876K",
+    "donee_aadhaar": "987698769876",
+    "donee_passport": "588757180",
+    "donee_relationship": "Son",
+    "donor_relationship": "Father",
+    "gift_share_percentage": "50",
+    "market_value": "4512000",
+    "stamp_duty_paid": "235000",
+    "registration_fee": "45120",
+    "stamp_duty_borne_by": "Donor",
+    "prior_agreement_date": "1985-05-05",
+    "prior_agreement_parties": "Mrs. Dakasha Desai and Mr. Prakash Hiralal Desai",
+    "co_owner_name": "Dakasha Prakash Desai",
+    "co_owner_share": "50",
+    "society_name": "Vishwashanti Co-op. Hsg. Soc. Ltd.",
+    "society_registration_no": "BOM/W-KW/HSG/KW/7249",
+    "society_registration_date": "1982-07-07",
+    "society_address": "Plot No. 65 & 66, Versova, Andheri (W), Mumbai 400061",
+    "share_certificate_no": "05",
+    "share_count": "5",
+    "share_face_value": "50",
+    "share_distinctive_nos": "021 to 025",
+    "flat_number": "101",
+    "floor_number": "1st Floor",
+    "building_name": "Vishwashanti",
+    "carpet_area": "540 sq. ft.",
+    "year_of_construction": "1982",
+    "building_floors": "4",
+    "lift_available": "Yes",
+    "plot_number": "65 & 66",
+    "survey_number": "91 (Part)",
+    "cts_number": "1301/1",
+    "street_number": "Versova Link Road",
+    "village_or_city": "Versova",
+    "taluka": "Andheri",
+    "district": "Mumbai Suburban",
+    "state": "Maharashtra",
     "witness_1_name": "Ganesh Shenoy",
     "witness_1_address": "Bejai, Mangaluru",
     "witness_2_name": "Latha Nayak",
@@ -180,13 +252,21 @@ class TestFormatting:
     def test_ordinals_handle_the_teens(self, day, suffix):
         assert formatting.deed_date_parts(f"2026-01-{day:02d}")[0] == suffix
 
-    def test_aadhaar_is_masked_to_last_four_digits(self):
-        assert formatting.mask_aadhaar("1234 5678 9012") == "XXXX XXXX 9012"
-        assert formatting.mask_aadhaar("123456789012") == "XXXX XXXX 9012"
+    def test_aadhaar_is_printed_in_full_in_groups_of_four(self):
+        # A deed presented for registration must identify the parties in full;
+        # a masked identifier is not an identification.
+        assert formatting.format_aadhaar("1234 5678 9012") == "1234 5678 9012"
+        assert formatting.format_aadhaar("123456789012") == "1234 5678 9012"
+        assert formatting.format_aadhaar("1234-5678-9012") == "1234 5678 9012"
 
-    def test_mask_aadhaar_of_junk_is_empty(self):
-        assert formatting.mask_aadhaar("n/a") == ""
-        assert formatting.mask_aadhaar(None) == ""
+    def test_format_aadhaar_of_junk_is_empty(self):
+        assert formatting.format_aadhaar("n/a") == ""
+        assert formatting.format_aadhaar(None) == ""
+        assert formatting.format_aadhaar("") == ""
+
+    def test_a_partial_aadhaar_is_shown_as_read_not_dropped(self):
+        # The reviewer has to be able to see a bad read to correct it.
+        assert formatting.format_aadhaar("1234 5678") == "1234 5678"
 
     def test_normalise_pan(self):
         assert formatting.normalise_pan("abcde1234f") == "ABCDE1234F"
@@ -285,15 +365,14 @@ class TestExtraction:
             result = extract_from_document(b"jpeg", "image/jpeg", "vendor_id")
         assert "vendor_name" not in result["fields"]
 
-    def test_aadhaar_is_masked_at_the_point_of_extraction(self):
+    def test_aadhaar_is_normalised_but_kept_whole_at_extraction(self):
         factory, _ = gemini_returning({
-            "vendor_aadhaar": "1234 5678 9012",
+            "vendor_aadhaar": "123456789012",
             "raw_text": "Aadhaar 1234 5678 9012",
         })
         with patch("google.generativeai.GenerativeModel", factory):
             result = extract_from_document(b"jpeg", "image/jpeg", "vendor_id")
-        assert result["fields"]["vendor_aadhaar"] == "XXXX XXXX 9012"
-        assert "5678" not in result["fields"]["vendor_aadhaar"]
+        assert result["fields"]["vendor_aadhaar"] == "1234 5678 9012"
 
     def test_mistranscribed_pan_is_rescued_from_the_raw_text(self):
         fields = extraction.reconcile_identifiers(
@@ -333,7 +412,7 @@ class TestExtraction:
             allowed_keys=document_by_id(SALE_DEED, "purchaser_id")["extracts"],
         )
         assert fields["purchaser_pan"] == "ABCDE1234F"
-        assert fields["purchaser_aadhaar"] == "XXXX XXXX 9012"
+        assert fields["purchaser_aadhaar"] == "1234 5678 9012"
         assert "vendor_pan" not in fields
         assert "vendor_aadhaar" not in fields
 
@@ -470,11 +549,17 @@ class TestGenerator:
                       sale_consideration_words="Rupees Forty Five Lakh Twelve Thousand Only (agreed)")
         assert "(agreed)" in render_plain_text(build_sections(fields))
 
-    def test_the_deed_never_reproduces_a_full_aadhaar_number(self):
+    def test_the_deed_recites_each_partys_aadhaar_in_full(self):
+        """No digit of an identifier may be withheld.
+
+        The Sub-Registrar identifies the parties from the deed itself, so a
+        masked Aadhaar makes the instrument unregistrable. Both parties'
+        numbers must appear whole and must not be confused with each other.
+        """
         text = render_plain_text(build_sections(FULL_FIELDS))
-        assert "123412341234" not in text.replace(" ", "")
-        assert "XXXX XXXX 1234" in text
-        assert not re.search(r"\b\d{4}\s?\d{4}\s?\d{4}\b", text)
+        assert "1234 1234 1234" in text
+        assert "9876 9876 9876" in text
+        assert "XXXX" not in text
 
     def test_the_statutory_clauses_carry_the_reference_deeds_language(self):
         text = render_plain_text(build_sections(FULL_FIELDS))
@@ -997,4 +1082,642 @@ class TestApi:
         response = client.post("/drafting/export/docx", json={"fields": FULL_FIELDS})
         assert response.status_code == 200
         assert "wordprocessingml" in response.headers["content-type"]
+        assert zipfile.is_zipfile(io.BytesIO(response.content))
+
+
+# ---------------------------------------------------------------------------
+# Gift Deed
+# ---------------------------------------------------------------------------
+
+def gift_text(fields=None, narrative=None):
+    return render_plain_text(
+        build_sections(GIFT_FIELDS if fields is None else fields,
+                       narrative, GIFT_DEED)
+    )
+
+
+class TestGiftDeedChecklist:
+    def test_the_gift_deed_is_offered_and_draftable(self):
+        assert GIFT_DEED in checklists.REQUIREMENTS_BY_CASE_TYPE
+        assert GIFT_DEED in DRAFTABLE_CASE_TYPES
+        assert requirements_for(GIFT_DEED)
+
+    def test_adding_the_gift_deed_left_the_other_case_types_alone(self):
+        assert requirements_for(SALE_DEED) is checklists.SALE_DEED_REQUIREMENTS
+        assert requirements_for(checklists.DIVORCE_CASE)
+        assert checklists.DIVORCE_CASE not in DRAFTABLE_CASE_TYPES
+
+    def test_the_checklist_covers_every_phase_of_gifting(self):
+        phases = requirements_for(GIFT_DEED)
+        assert len(phases) == 5
+        joined = " ".join(p["phase"] for p in phases).lower()
+        for topic in ("identity", "title", "society", "stamp duty", "witness"):
+            assert topic in joined
+
+    def test_the_checklist_asks_for_the_documents_a_gift_actually_needs(self):
+        ids = {d["id"] for p in requirements_for(GIFT_DEED) for d in p["documents"]}
+        # A gift of a society flat stands or falls on these four: who the
+        # parties are to each other, the share certificate, the society's
+        # no-objection, and the valuation the duty is charged on.
+        for doc_id in ("relationship_proof", "share_certificate", "society_noc",
+                       "market_valuation"):
+            assert doc_id in ids
+
+    def test_document_ids_are_unique(self):
+        ids = [d["id"] for p in requirements_for(GIFT_DEED) for d in p["documents"]]
+        assert len(ids) == len(set(ids))
+
+    def test_every_extracts_entry_names_a_real_gift_deed_field(self):
+        for phase in requirements_for(GIFT_DEED):
+            for doc in phase["documents"]:
+                unknown = set(doc["extracts"]) - set(GIFT_DEED_FIELD_KEYS)
+                assert not unknown, f"{doc['id']} names unknown field(s) {unknown}"
+
+    def test_every_required_field_has_a_document_that_supplies_it(self):
+        """The flow must not require a particular no upload can produce."""
+        supplied = {
+            key
+            for phase in requirements_for(GIFT_DEED)
+            for doc in phase["documents"]
+            for key in doc["extracts"]
+        }
+        for field in GIFT_DEED_FIELDS:
+            if field.required and field.key not in DERIVABLE_FIELDS:
+                if field.key in ("place_of_execution", "date_of_execution"):
+                    continue
+                assert field.key in supplied, f"nothing supplies {field.key}"
+
+    def test_document_by_id_is_scoped_to_the_case_type(self):
+        assert document_by_id(GIFT_DEED, "share_certificate")["required"] is True
+        # A Sale Deed document id must not resolve against the Gift Deed.
+        assert document_by_id(GIFT_DEED, "parent_sale_deed") == {}
+
+    def test_the_field_set_carries_no_sale_only_particulars(self):
+        keys = set(field_keys_for(GIFT_DEED))
+        for sale_only in ("sale_consideration_amount", "sale_consideration_words",
+                          "mode_of_payment", "vendor_name", "purchaser_name"):
+            assert sale_only not in keys
+
+    def test_field_definitions_are_serialisable_for_the_ui(self):
+        payload = [f.as_dict() for f in fields_for(GIFT_DEED)]
+        assert len(payload) == len(GIFT_DEED_FIELD_KEYS)
+        assert all({"key", "label", "group", "required", "kind"} <= set(f)
+                   for f in payload)
+        json.dumps(payload)
+
+    def test_the_review_form_does_not_block_on_what_the_deed_can_derive(self):
+        missing = missing_required_fields({}, GIFT_DEED)
+        assert "gift_recital" not in missing
+        assert "title_recital" not in missing
+        assert "donor_name" in missing and "gift_share_percentage" in missing
+
+
+class TestGiftDeedExtraction:
+    def test_the_prompt_is_scoped_to_the_gift_deed_field_set(self):
+        prompt = extraction.build_prompt(
+            "Donor Aadhaar", ["donor_name", "donor_pan"], GIFT_DEED
+        )
+        assert '"donor_name"' in prompt and '"donor_pan"' in prompt
+        assert "Donor Aadhaar" in prompt
+
+    def test_a_donors_pan_is_never_attributed_to_the_donee(self):
+        """The same failure the Sale Deed guards against, for the gift roles.
+
+        A donor's ID card carries one PAN. Copying it onto the donee puts a
+        wrong identifier for a party into a registered deed, and the review
+        form would show the field as already filled.
+        """
+        fields = extraction.reconcile_identifiers(
+            {},
+            "PERMANENT ACCOUNT NUMBER ABCDE1234F",
+            allowed_keys=document_by_id(GIFT_DEED, "donor_id")["extracts"],
+            case_type=GIFT_DEED,
+        )
+        assert fields["donor_pan"] == "ABCDE1234F"
+        assert "donee_pan" not in fields
+
+    def test_a_donees_document_fills_only_the_donees_identifiers(self):
+        fields = extraction.reconcile_identifiers(
+            {},
+            "PAN ABCDE1234F  AADHAAR 1234 5678 9012",
+            allowed_keys=document_by_id(GIFT_DEED, "donee_id")["extracts"],
+            case_type=GIFT_DEED,
+        )
+        assert fields["donee_pan"] == "ABCDE1234F"
+        assert fields["donee_aadhaar"] == "1234 5678 9012"
+        assert "donor_pan" not in fields
+
+    def test_the_sale_deed_roles_are_not_touched_on_a_gift(self):
+        fields = extraction.reconcile_identifiers(
+            {}, "PAN ABCDE1234F", case_type=GIFT_DEED
+        )
+        assert "vendor_pan" not in fields and "purchaser_pan" not in fields
+
+    def test_extraction_is_scoped_to_the_gift_deed_field_set(self):
+        factory, _ = gemini_returning({
+            "donor_name": "Prakash Hiralal Desai",
+            "share_certificate_no": "05",
+            "sale_consideration_amount": "4500000",   # not a Gift Deed field
+            "raw_text": "",
+        })
+        with patch("google.generativeai.GenerativeModel", factory):
+            result = extract_from_document(b"jpeg", "image/jpeg", "donor_id",
+                                           case_type=GIFT_DEED)
+        assert result["fields"]["donor_name"] == "Prakash Hiralal Desai"
+        assert "sale_consideration_amount" not in result["fields"]
+
+    def test_the_valuation_figures_are_stored_as_plain_numbers(self):
+        merged = merge_extractions(
+            [{"docId": "market_valuation",
+              "fields": {"market_value": "Rs. 45,12,000/-"}},
+             {"docId": "stamp_duty_challan",
+              "fields": {"stamp_duty_paid": "Rs. 2,35,000/-"}}],
+            case_type=GIFT_DEED,
+        )
+        assert merged["fields"]["market_value"] == "4512000"
+        assert merged["fields"]["stamp_duty_paid"] == "235000"
+
+    def test_the_share_certificate_outranks_an_incidental_mention(self):
+        merged = merge_extractions(
+            [{"docId": "society_noc", "fields": {"share_certificate_no": "99"}},
+             {"docId": "share_certificate", "fields": {"share_certificate_no": "05"}}],
+            case_type=GIFT_DEED,
+        )
+        assert merged["fields"]["share_certificate_no"] == "05"
+
+    def test_the_summary_counts_against_the_gift_deed_field_set(self):
+        summary = extraction.extraction_summary(GIFT_FIELDS, GIFT_DEED)
+        assert summary["fieldsTotal"] == len(GIFT_DEED_FIELD_KEYS)
+        assert summary["missingRequired"] == []
+        assert summary["readyToGenerate"] is True
+
+
+class TestGiftDeedGenerator:
+    def test_the_deed_follows_the_reference_drafts_order(self):
+        ids = [s["id"] for s in build_sections(GIFT_FIELDS, None, GIFT_DEED)]
+        skeleton = [i for i in ids if not i.startswith("clause_")]
+        assert skeleton == [
+            "title", "preamble", "between_label", "donor", "and_label", "donee",
+            "whereas_heading", "title_recital", "society_recital",
+            "gift_property_recital", "relationship_recital", "gift_recital",
+            "acceptance_recital", "witnesseth", "granting", "share_devolution",
+            "schedule_heading", "schedule_note", "schedule_body",
+            "schedule_particulars", "attestation", "sign_donor", "sign_donee",
+            "witnesses",
+        ]
+
+    def test_the_deed_reuses_only_styles_the_renderers_already_know(self):
+        """No new styles, so the PDF, DOCX and live canvas need no new branches.
+
+        The Sale Deed is the proof that a style is rendered everywhere: it has
+        been through all three renderers since the feature shipped. Anything the
+        Gift Deed emits beyond that set would silently fall through to the
+        default branch in one of them.
+        """
+        known = {
+            section["style"]
+            for section in build_sections(FULL_FIELDS, None, SALE_DEED)
+        }
+        for section in build_sections(GIFT_FIELDS, None, GIFT_DEED):
+            assert section["style"] in known, section["style"]
+
+    def test_the_deed_runs_to_the_five_to_ten_pages_the_brief_asks_for(self):
+        sections = build_sections(GIFT_FIELDS, None, GIFT_DEED)
+        assert 5 <= estimate_pages(sections) <= 10
+
+    def test_the_deed_carries_the_reference_drafts_operative_language(self):
+        text = gift_text()
+        for phrase in (
+            "THIS DEED OF GIFT is made and executed at Mumbai",
+            "NOW THIS INDENTURE WITNESSETH AS UNDER:-",
+            "WITHOUT ACCEPTING ANY MONETARY CONSIDERATION",
+            "natural love and affection",
+            "TO HAVE AND TO HOLD",
+            "seized and possessed of and otherwise well and sufficiently entitled",
+            "THE SCHEDULE OF THE PROPERTY ABOVE REFERRED TO",
+            "IN WITNESS WHEREOF the DONOR as well as the DONEE (by acceptance)",
+        ):
+            assert phrase in text, f"missing {phrase!r}"
+
+    def test_the_gift_is_recited_as_voluntary_and_irrevocable(self):
+        """A gift that reads as revocable is not a gift.
+
+        Section 126 of the Transfer of Property Act lets a gift be revoked only
+        on narrow grounds, and the reference deed forecloses the argument
+        expressly. These words are template-locked for that reason.
+        """
+        text = gift_text()
+        for phrase in ("voluntarily, freely, unconditionally, irrevocably and "
+                       "absolutely",
+                       "That the GIFT hereby made is absolute and irrevocable",
+                       "shall not at any time hereafter revoke, cancel, "
+                       "repudiate or question the same"):
+            assert phrase in text, f"missing {phrase!r}"
+
+    def test_the_deed_never_recites_a_price(self):
+        """A gift passes without consideration. Reciting a price would make the
+        instrument a sale, chargeable to a different duty."""
+        text = gift_text().lower()
+        for forbidden in ("sale consideration", "purchase price",
+                          "receipt of which the", "acquit, release and discharge",
+                          "vendor", "purchaser"):
+            assert forbidden not in text, f"sale language leaked: {forbidden!r}"
+
+    def test_the_parties_are_named_as_donor_and_donee(self):
+        text = gift_text()
+        assert "the “DONOR”" in text and "the “DONEE”" in text
+        assert "PRAKASH HIRALAL DESAI" in text
+        assert "VIKAS PRAKASH DESAI" in text
+
+    def test_the_relationship_founding_the_gift_is_recited_both_ways(self):
+        text = gift_text()
+        assert "the DONEE is the SON of the DONOR" in text
+        assert "the DONOR is the FATHER of the DONEE" in text
+
+    def test_an_unambiguous_relationship_is_reciprocated_without_being_asked(self):
+        fields = dict(GIFT_FIELDS, donee_relationship="Wife")
+        fields.pop("donor_relationship")
+        assert "the DONOR is the HUSBAND of the DONEE" in gift_text(fields)
+
+    def test_a_gendered_relationship_is_left_for_the_draftsman(self):
+        """Guessing "father" where the donor is the mother misdescribes a party."""
+        fields = dict(GIFT_FIELDS, donee_relationship="Son")
+        fields.pop("donor_relationship")
+        text = gift_text(fields)
+        assert "the DONEE is the SON of the DONOR" in text
+        assert "the DONOR is the ____________ of the DONEE" in text
+
+    def test_every_identifier_is_printed_in_full(self):
+        """The brief is explicit: no detail may be hidden behind a mask."""
+        text = gift_text()
+        assert "1234 1234 1234" in text      # donor Aadhaar
+        assert "9876 9876 9876" in text      # donee Aadhaar
+        assert "AGEPD9693G" in text          # donor PAN
+        assert "588757180" in text           # donee passport
+        assert "XXXX" not in text
+
+    def test_a_party_resident_abroad_is_described_by_passport_as_well(self):
+        text = gift_text()
+        assert "PASSPORT NO. 588757180" in text
+
+    def test_the_society_and_share_particulars_are_defined_for_later_reference(self):
+        text = gift_text()
+        assert "“the SAID SOCIETY”" in text
+        assert "“the SAID SHARES”" in text
+        assert "“the SAID GIFT PROPERTY”" in text
+        assert "BOM/W-KW/HSG/KW/7249" in text
+        assert "5 fully paid-up shares of Rs. 50/- each" in text
+        assert "distinctive Nos. 021 to 025" in text
+
+    def test_the_share_table_accounts_for_the_whole_property(self):
+        """The Sub-Registrar reads this table to confirm the shares still sum."""
+        body = next(s["body"] for s in build_sections(GIFT_FIELDS, None, GIFT_DEED)
+                    if s["id"] == "share_devolution")
+        assert "Dakasha Prakash Desai — 50% — 50%" in body
+        assert "Prakash Hiralal Desai — 50% — 0%" in body
+        assert "Vikas Prakash Desai — 0% — 50%" in body
+        assert "Total — 100% — 100%" in body
+
+    def test_the_schedule_describes_the_share_not_the_whole_flat(self):
+        text = gift_text()
+        assert "(50% UNDIVIDED SHARE OF THE DONOR)" in text
+        assert "All THAT PIECE AND PARCEL of 50% undivided share" in text
+
+    def test_the_schedule_carries_the_particulars_block(self):
+        text = gift_text()
+        for line in ("Year of Construction: 1982", "No. of Building Floors: 4",
+                     "Lift: Yes", "Flat No.: 101",
+                     "Total area of Flat (Carpet): 540 sq. ft.",
+                     "Survey No.: 91 (Part)", "C.T.S. No.: 1301/1",
+                     "Plot No.: 65 & 66", "Taluka: Andheri"):
+            assert line in text, f"missing {line!r}"
+
+    def test_the_valuation_is_recited_in_indian_digit_grouping(self):
+        text = gift_text()
+        assert "Rs. 45,12,000/-" in text
+        assert "Rs. 2,35,000/-" in text
+        assert "Rs. 45,120/-" in text
+
+    def test_the_donor_bears_the_duty_by_default(self):
+        fields = dict(GIFT_FIELDS)
+        fields.pop("stamp_duty_borne_by")
+        assert "have been borne and paid by the DONOR" in gift_text(fields)
+
+    def test_a_missing_particular_becomes_a_fill_in_line_not_a_wrong_one(self):
+        sections = build_sections({}, None, GIFT_DEED)
+        text = render_plain_text(sections)
+        assert "GIFT DEED" in text
+        assert "_____" in text
+        assert estimate_pages(sections) >= 5
+
+    def test_authored_passages_replace_only_the_bespoke_ones(self):
+        narrative = {
+            "title_recital": "WHEREAS the model wrote this recital.",
+            "gift_recital": "AND WHEREAS the model wrote this one as well.",
+            "schedule_body": "All THAT the model described.",
+        }
+        text = gift_text(narrative=narrative)
+        assert "the model wrote this recital" in text
+        assert "the model wrote this one as well" in text
+        assert "the model described" in text
+        # The covenants are the firm's precedent and must survive untouched.
+        assert "That the GIFT hereby made is absolute and irrevocable" in text
+
+    def test_the_model_is_only_offered_the_bespoke_passages(self):
+        assert narrative_sections_for(GIFT_DEED) == (
+            "title_recital", "gift_recital", "schedule_body",
+        )
+        assert narrative_sections_for(SALE_DEED) == (
+            "title_recital", "agreement_recital", "schedule_body",
+        )
+
+    def test_markup_in_a_field_cannot_inject_into_the_deed(self):
+        fields = dict(GIFT_FIELDS, donor_name="Prakash <script>alert(1)</script>")
+        assert "<script>" in gift_text(fields)   # carried verbatim, escaped at render
+
+
+class TestGiftDeedStreaming:
+    def test_the_whole_deed_streams_section_by_section(self):
+        events = list(stream.stream_document(GIFT_FIELDS, use_llm=False,
+                                             case_type=GIFT_DEED))
+        streamed = [e["id"] for e in events if e["type"] == "section"]
+        assert streamed == [s["id"] for s in
+                            build_sections(GIFT_FIELDS, None, GIFT_DEED)]
+        assert events[-1]["type"] == "done"
+        assert "GIFT DEED" in events[-1]["plainText"]
+        assert events[-1]["source"] == "template"
+
+    def test_the_deltas_reassemble_each_section_byte_for_byte(self):
+        """The client treats a delta as a plain append, so nothing may be lost."""
+        events = list(stream.stream_document(GIFT_FIELDS, use_llm=False,
+                                             case_type=GIFT_DEED))
+        rebuilt: dict = {}
+        for event in events:
+            if event["type"] == "delta":
+                rebuilt[event["id"]] = rebuilt.get(event["id"], "") + event["text"]
+        for section in build_sections(GIFT_FIELDS, None, GIFT_DEED):
+            assert rebuilt.get(section["id"], "") == section["body"]
+
+    def test_the_estimated_page_count_reaches_the_client_up_front(self):
+        meta = next(e for e in stream.stream_document(GIFT_FIELDS, use_llm=False,
+                                                      case_type=GIFT_DEED)
+                    if e["type"] == "meta")
+        assert 5 <= meta["estimatedPages"] <= 10
+        assert meta["clauseCount"] > 0
+
+    def test_the_authored_passages_are_folded_into_the_stream(self):
+        narrative = {
+            "title_recital": "WHEREAS the model authored this title recital.",
+            "gift_recital": "AND WHEREAS the model authored this gift recital.",
+            "schedule_body": "All THAT the model authored this schedule.",
+        }
+        with patch.object(stream, "author_narrative", return_value=narrative):
+            events = list(stream.stream_document(GIFT_FIELDS, use_llm=True,
+                                                 case_type=GIFT_DEED))
+        assert events[-1]["source"] == "gemini"
+        assert "the model authored this gift recital" in events[-1]["plainText"]
+
+    def test_the_gift_prompt_tells_the_model_this_is_not_a_sale(self):
+        factory, model = gemini_returning({
+            "title_recital": " ".join(["word"] * 40),
+            "gift_recital": " ".join(["word"] * 40),
+            "schedule_body": " ".join(["word"] * 40),
+        })
+        with patch("google.generativeai.GenerativeModel", factory):
+            stream.author_narrative(GIFT_FIELDS, GIFT_DEED)
+
+        system_prompt = factory.call_args.kwargs["system_instruction"]
+        assert "Deeds of Gift" in system_prompt
+        assert "WITHOUT monetary consideration" in system_prompt
+        assert "irrevocable" in system_prompt
+        assert "Vendor" not in system_prompt
+
+        user_prompt = model.generate_content.call_args.args[0]
+        assert '"gift_recital"' in user_prompt
+        assert '"agreement_recital"' not in user_prompt
+
+    def test_a_model_failure_falls_back_to_the_precedent_wording(self):
+        with patch.object(stream, "author_narrative",
+                          side_effect=RuntimeError("model offline")):
+            events = list(stream.stream_document(GIFT_FIELDS, use_llm=True,
+                                                 case_type=GIFT_DEED))
+        assert events[-1]["source"] == "template"
+        assert any(e["type"] == "notice" for e in events)
+        assert "natural love and affection" in events[-1]["plainText"]
+
+    def test_a_blank_field_set_still_streams_a_complete_deed_with_a_warning(self):
+        events = list(stream.stream_document({}, use_llm=False,
+                                             case_type=GIFT_DEED))
+        warning = next(e for e in events if e["type"] == "warning")
+        assert "donor_name" in warning["missingRequired"]
+        assert events[-1]["type"] == "done"
+
+
+class TestGiftDeedExports:
+    def test_the_pdf_runs_to_five_to_ten_pages(self):
+        buffer = render_sale_deed_pdf(fields=GIFT_FIELDS, case_type=GIFT_DEED)
+        reader, _ = read_pdf_text(buffer)
+        assert 5 <= len(reader.pages) <= 10
+        assert buffer.getvalue()[:5] == b"%PDF-"
+
+    def test_the_pdf_carries_the_deeds_language_and_particulars(self):
+        _, text = read_pdf_text(
+            render_sale_deed_pdf(fields=GIFT_FIELDS, case_type=GIFT_DEED)
+        )
+        for phrase in ("GIFT DEED", "NOW THIS INDENTURE WITNESSETH",
+                       "PRAKASH HIRALAL DESAI", "VIKAS PRAKASH DESAI",
+                       "SCHEDULE", "Rs. 45,12,000/-", "021 to 025",
+                       "Ganesh Shenoy"):
+            assert phrase in text, f"missing {phrase!r}"
+
+    def test_the_pdf_shows_every_digit_of_each_identifier(self):
+        _, text = read_pdf_text(
+            render_sale_deed_pdf(fields=GIFT_FIELDS, case_type=GIFT_DEED)
+        )
+        assert "1234 1234 1234" in text
+        assert "9876 9876 9876" in text
+        assert "XXXX" not in text
+
+    def test_the_signature_pages_name_the_gift_roles(self):
+        """The photograph box and impression grid belong to a named executant."""
+        _, text = read_pdf_text(
+            render_sale_deed_pdf(fields=GIFT_FIELDS, case_type=GIFT_DEED)
+        )
+        assert "withinnamed DONOR" in text
+        assert "withinnamed DONEE" in text
+        assert "Photograph" in text and "Thumb" in text
+        assert "Vendor" not in text and "Purchaser" not in text
+
+    def test_the_running_header_names_this_deed_not_the_sale_deed(self):
+        _, text = read_pdf_text(
+            render_sale_deed_pdf(fields=GIFT_FIELDS, case_type=GIFT_DEED)
+        )
+        assert "SALE DEED" not in text
+        assert text.count("GIFT DEED") > 1      # title plus the running header
+
+    def test_the_approved_sections_are_what_get_printed(self):
+        sections = [dict(s) for s in build_sections(GIFT_FIELDS, None, GIFT_DEED)]
+        for section in sections:
+            if section["id"] == "clause_7":
+                section["body"] = "That this clause was amended by the advocate."
+        _, text = read_pdf_text(
+            render_sale_deed_pdf(sections=sections, case_type=GIFT_DEED)
+        )
+        assert "amended by the advocate" in text
+
+    def test_the_stamp_paper_offset_applies_to_a_gift_deed_too(self):
+        from reportlab.lib.units import inch
+
+        buffer = render_sale_deed_pdf(fields=GIFT_FIELDS, case_type=GIFT_DEED,
+                                      first_page_top_offset=3.5 * inch)
+        assert "GIFT DEED" in read_pdf_text(buffer)[1]
+
+    def test_an_empty_field_set_still_renders(self):
+        reader, text = read_pdf_text(
+            render_sale_deed_pdf(fields={}, case_type=GIFT_DEED)
+        )
+        assert len(reader.pages) >= 5
+        assert "GIFT DEED" in text
+
+    def test_the_docx_is_a_readable_editable_word_document(self):
+        from docx import Document
+
+        buffer = render_sale_deed_docx(fields=GIFT_FIELDS, case_type=GIFT_DEED)
+        assert zipfile.is_zipfile(io.BytesIO(buffer.getvalue()))
+        document = Document(io.BytesIO(buffer.getvalue()))
+        text = "\n".join(p.text for p in document.paragraphs)
+        assert "GIFT DEED" in text
+        assert "NOW THIS INDENTURE WITNESSETH AS UNDER:-" in text
+        assert "PRAKASH HIRALAL DESAI" in text
+        assert "Total — 100% — 100%" in text
+        assert len(document.tables) == 2
+
+
+class TestGiftDeedApi:
+    def test_the_gift_deed_is_advertised_as_draftable(self, client):
+        names = {c["name"]: c for c in
+                 client.get("/drafting/case-types").json()["caseTypes"]}
+        assert names[GIFT_DEED]["draftable"] is True
+        assert names[GIFT_DEED]["phaseCount"] == 5
+        assert names[GIFT_DEED]["documentCount"] > 0
+        # The case types the flow already offered are untouched.
+        assert names[SALE_DEED]["draftable"] is True
+        assert names["Divorce Case"]["draftable"] is False
+
+    def test_requirements_returns_the_gift_checklist_and_fields(self, client):
+        body = client.get("/drafting/requirements",
+                          params={"case_type": GIFT_DEED}).json()
+        assert body["draftable"] is True
+        assert len(body["phases"]) == 5
+        assert len(body["fields"]) == len(GIFT_DEED_FIELD_KEYS)
+        keys = {f["key"] for f in body["fields"]}
+        assert {"donor_name", "donee_name", "gift_share_percentage"} <= keys
+
+    def test_the_divorce_case_still_gets_no_field_definitions(self, client):
+        body = client.get("/drafting/requirements",
+                          params={"case_type": "Divorce Case"}).json()
+        assert body["fields"] == []
+
+    def test_preview_builds_a_gift_deed_when_asked_for_one(self, client):
+        body = client.post("/drafting/preview",
+                           json={"fields": GIFT_FIELDS,
+                                 "caseType": GIFT_DEED}).json()
+        assert body["caseType"] == GIFT_DEED
+        assert "GIFT DEED" in body["plainText"]
+        assert 5 <= body["estimatedPages"] <= 10
+        assert body["readyToGenerate"] is True
+
+    def test_preview_of_nothing_reports_the_gift_deeds_own_missing_fields(self, client):
+        body = client.post("/drafting/preview",
+                           json={"fields": {}, "caseType": GIFT_DEED}).json()
+        assert body["readyToGenerate"] is False
+        assert "donor_name" in body["missingRequired"]
+        assert "vendor_name" not in body["missingRequired"]
+
+    def test_omitting_the_case_type_still_yields_a_sale_deed(self, client):
+        """Clients that predate the Gift Deed must keep working unchanged."""
+        body = client.post("/drafting/preview", json={"fields": FULL_FIELDS}).json()
+        assert "SALE DEED" in body["plainText"]
+
+    def _sse_events(self, response):
+        return [json.loads(line[6:]) for line in response.text.splitlines()
+                if line.startswith("data: ")]
+
+    def test_generate_streams_a_gift_deed(self, client):
+        response = client.post("/drafting/generate",
+                               json={"fields": GIFT_FIELDS,
+                                     "caseType": GIFT_DEED, "useLlm": False})
+        assert response.status_code == 200
+        assert response.headers["content-type"].startswith("text/event-stream")
+        events = self._sse_events(response)
+        assert [e["id"] for e in events if e["type"] == "section"] == [
+            s["id"] for s in build_sections(GIFT_FIELDS, None, GIFT_DEED)
+        ]
+        assert events[-1]["type"] == "done"
+        assert "GIFT DEED" in events[-1]["plainText"]
+
+    def test_extract_routes_an_upload_to_the_gift_checklist(self, client):
+        factory, model = gemini_returning({
+            "donor_name": "Prakash Hiralal Desai",
+            "donor_pan": "AGEPD9693G",
+            "raw_text": "Prakash Hiralal Desai AGEPD9693G",
+        })
+        with patch("google.generativeai.GenerativeModel", factory):
+            response = client.post(
+                "/drafting/extract",
+                data={"doc_ids": "donor_id", "case_type": GIFT_DEED},
+                files=[("files", ("a.jpg", b"fake-jpeg-bytes", "image/jpeg"))],
+            )
+        assert response.status_code == 200
+        body = response.json()
+        assert body["caseType"] == GIFT_DEED
+        assert body["fields"]["donor_name"] == "Prakash Hiralal Desai"
+        assert "donee_name" in body["missingRequired"]
+        assert body["fieldsTotal"] == len(GIFT_DEED_FIELD_KEYS)
+        assert "Donor" in model.generate_content.call_args.args[0][0]
+
+    def test_an_upload_with_no_doc_id_is_attributed_to_the_gift_checklist(self, client):
+        factory, _ = gemini_returning({"donor_name": "Prakash", "raw_text": ""})
+        with patch("google.generativeai.GenerativeModel", factory):
+            response = client.post(
+                "/drafting/extract",
+                data={"doc_ids": "", "case_type": GIFT_DEED},
+                files=[("files", ("a.jpg", b"bytes", "image/jpeg"))],
+            )
+        assert response.status_code == 200
+        assert response.json()["documents"][0]["docId"] == "donor_id"
+
+    def test_merge_applies_the_gift_checklists_precedence_rules(self, client):
+        body = client.post("/drafting/merge", json={
+            "caseType": GIFT_DEED,
+            "documents": [
+                {"docId": "property_tax_receipt",
+                 "fields": {"donor_address": "Off the tax receipt"}},
+                {"docId": "donor_address_proof",
+                 "fields": {"donor_address": "Off the utility bill"}},
+            ],
+        }).json()
+        assert body["fields"]["donor_address"] == "Off the utility bill"
+        assert body["caseType"] == GIFT_DEED
+
+    def test_merge_reports_readiness_for_a_complete_gift_field_set(self, client):
+        body = client.post("/drafting/merge", json={
+            "caseType": GIFT_DEED, "documents": [], "overrides": GIFT_FIELDS,
+        }).json()
+        assert body["readyToGenerate"] is True
+
+    def test_pdf_export_names_the_download_after_the_deed(self, client):
+        response = client.post("/drafting/export/pdf",
+                               json={"fields": GIFT_FIELDS,
+                                     "caseType": GIFT_DEED})
+        assert response.status_code == 200
+        assert "Gift-Deed.pdf" in response.headers["content-disposition"]
+        assert "GIFT DEED" in read_pdf_text(io.BytesIO(response.content))[1]
+
+    def test_docx_export_returns_an_editable_gift_deed(self, client):
+        response = client.post("/drafting/export/docx",
+                               json={"fields": GIFT_FIELDS,
+                                     "caseType": GIFT_DEED})
+        assert response.status_code == 200
+        assert "Gift-Deed.docx" in response.headers["content-disposition"]
         assert zipfile.is_zipfile(io.BytesIO(response.content))

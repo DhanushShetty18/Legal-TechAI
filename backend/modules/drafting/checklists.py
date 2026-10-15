@@ -7,7 +7,7 @@ the UI uses it to explain why a document is being asked for.
 
 from typing import Any, Dict, List
 
-from .schema import DIVORCE_CASE, SALE_DEED
+from .schema import DIVORCE_CASE, GIFT_DEED, SALE_DEED
 
 SALE_DEED_REQUIREMENTS: List[Dict[str, Any]] = [
     {
@@ -169,6 +169,180 @@ SALE_DEED_REQUIREMENTS: List[Dict[str, Any]] = [
     },
 ]
 
+GIFT_DEED_REQUIREMENTS: List[Dict[str, Any]] = [
+    {
+        "phase": "Phase 1: Identity, Capacity & Relationship",
+        "documents": [
+            {
+                "id": "donor_id",
+                "label": "Proof of Identity of the Donor: Aadhaar, PAN Card, Passport or Voter ID.",
+                "required": True,
+                "extracts": ["donor_name", "donor_father_name", "donor_age",
+                             "donor_address", "donor_pan", "donor_aadhaar",
+                             "donor_passport"],
+            },
+            {
+                "id": "donee_id",
+                "label": "Proof of Identity of the Donee: Aadhaar, PAN Card, Passport or Voter ID.",
+                "required": True,
+                "extracts": ["donee_name", "donee_father_name", "donee_age",
+                             "donee_address", "donee_pan", "donee_aadhaar",
+                             "donee_passport"],
+            },
+            {
+                "id": "donor_address_proof",
+                "label": "Proof of Address of the Donor: utility bill, bank statement or registered rent agreement.",
+                "required": True,
+                "extracts": ["donor_address"],
+            },
+            {
+                "id": "donee_address_proof",
+                "label": "Proof of Address of the Donee: utility bill, bank statement or registered rent agreement.",
+                "required": True,
+                "extracts": ["donee_address"],
+            },
+            {
+                "id": "relationship_proof",
+                "label": "Proof of relationship between the Donor and the Donee: birth certificate, "
+                         "ration card, family register or school record naming both.",
+                "required": True,
+                "extracts": ["donee_relationship", "donor_relationship",
+                             "donor_name", "donee_name"],
+            },
+            {
+                "id": "party_photographs",
+                "label": "Passport-size photographs of the Donor and the Donee, for affixing on the deed.",
+                "required": False,
+                "extracts": [],
+            },
+        ],
+    },
+    {
+        "phase": "Phase 2: Title & Chain of Ownership",
+        "documents": [
+            {
+                "id": "parent_agreement",
+                "label": "Registered Agreement / Sale Deed by which the Donor acquired the flat, "
+                         "together with any deed of ratification recording the shareholding ratio.",
+                "required": True,
+                "extracts": ["prior_agreement_date", "prior_agreement_parties",
+                             "flat_number", "floor_number", "building_name",
+                             "carpet_area", "plot_number", "survey_number",
+                             "cts_number", "village_or_city", "taluka",
+                             "district", "state", "co_owner_name",
+                             "co_owner_share", "gift_share_percentage",
+                             "property_description"],
+            },
+            {
+                "id": "chain_of_title",
+                "label": "Chain of title documents tracing ownership for the preceding 30 years.",
+                "required": False,
+                "extracts": ["title_recital"],
+            },
+            {
+                "id": "share_certificate",
+                "label": "Share Certificate issued by the Society in the name of the Donor.",
+                "required": True,
+                "extracts": ["share_certificate_no", "share_count",
+                             "share_face_value", "share_distinctive_nos",
+                             "society_name", "flat_number"],
+            },
+            {
+                "id": "society_registration_certificate",
+                "label": "Registration Certificate of the Co-operative Housing Society.",
+                "required": True,
+                "extracts": ["society_name", "society_registration_no",
+                             "society_registration_date", "society_address"],
+            },
+            {
+                "id": "index_ii_or_property_card",
+                "label": "Index-II of the parent agreement, or the Property Card / C.T.S. extract for the plot.",
+                "required": False,
+                "extracts": ["cts_number", "plot_number", "survey_number",
+                             "street_number"],
+            },
+        ],
+    },
+    {
+        "phase": "Phase 3: Society & Statutory Clearances",
+        "documents": [
+            {
+                "id": "society_noc",
+                "label": "No-Objection Certificate from the Society for the transfer of the shares and interest by gift.",
+                "required": True,
+                "extracts": ["society_name", "society_address"],
+            },
+            {
+                "id": "encumbrance_certificate",
+                "label": "Encumbrance Certificate establishing the flat is free of mortgage, lien or charge.",
+                "required": True,
+                "extracts": [],
+            },
+            {
+                "id": "property_tax_receipt",
+                "label": "Latest municipal property tax paid receipt for the said flat.",
+                "required": True,
+                "extracts": ["flat_number", "building_name", "village_or_city"],
+            },
+            {
+                "id": "maintenance_noc",
+                "label": "Society certificate that maintenance and sinking-fund dues stand cleared.",
+                "required": False,
+                "extracts": [],
+            },
+            {
+                "id": "occupancy_certificate",
+                "label": "Occupancy / Completion Certificate for the building.",
+                "required": False,
+                "extracts": ["year_of_construction", "building_floors",
+                             "lift_available"],
+            },
+        ],
+    },
+    {
+        "phase": "Phase 4: Valuation & Stamp Duty",
+        "documents": [
+            {
+                "id": "market_valuation",
+                "label": "Ready-reckoner valuation or registered valuer's report for the share being gifted.",
+                "required": True,
+                "extracts": ["market_value", "carpet_area"],
+            },
+            {
+                "id": "stamp_duty_challan",
+                "label": "Stamp Duty / Registration Fee challan, e-Stamp certificate or adjudication order.",
+                "required": True,
+                "extracts": ["stamp_duty_paid", "registration_fee",
+                             "stamp_duty_borne_by"],
+            },
+            {
+                "id": "donor_declaration",
+                "label": "Donor's declaration that the gift is voluntary, without consideration and irrevocable.",
+                "required": False,
+                "extracts": ["gift_recital", "gift_share_percentage"],
+            },
+            {
+                "id": "heirs_noc",
+                "label": "Consent or no-objection of the Donor's other legal heirs, where obtained.",
+                "required": False,
+                "extracts": [],
+            },
+        ],
+    },
+    {
+        "phase": "Phase 5: Attesting Witnesses",
+        "documents": [
+            {
+                "id": "witness_ids",
+                "label": "Proof of Identity and Address of the two attesting witnesses.",
+                "required": True,
+                "extracts": ["witness_1_name", "witness_1_address",
+                             "witness_2_name", "witness_2_address"],
+            },
+        ],
+    },
+]
+
 # Pre-existing checklist, kept verbatim so the Divorce Case flow is unchanged.
 DIVORCE_REQUIREMENTS: List[Dict[str, Any]] = [
     {
@@ -233,12 +407,13 @@ DIVORCE_REQUIREMENTS: List[Dict[str, Any]] = [
 
 REQUIREMENTS_BY_CASE_TYPE: Dict[str, List[Dict[str, Any]]] = {
     SALE_DEED: SALE_DEED_REQUIREMENTS,
+    GIFT_DEED: GIFT_DEED_REQUIREMENTS,
     DIVORCE_CASE: DIVORCE_REQUIREMENTS,
 }
 
-# Only the Sale Deed has a court-ready generator behind it today; the Divorce
-# Case keeps the upload-and-file behaviour it already had.
-DRAFTABLE_CASE_TYPES = [SALE_DEED]
+# Conveyances have a court-ready generator behind them; the Divorce Case keeps
+# the upload-and-file behaviour it already had.
+DRAFTABLE_CASE_TYPES = [SALE_DEED, GIFT_DEED]
 
 
 def requirements_for(case_type: str) -> List[Dict[str, Any]]:

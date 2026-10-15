@@ -5,6 +5,96 @@ taken, and what we accepted in exchange. Newest section first.
 
 ---
 
+## Gift Deed as the second draftable instrument
+
+The Camera Filing flow now offers `Gift Deed` alongside `Sale Deed`. Uploading a
+donor's documents produces a registrable Deed of Gift of a flat held through a
+co-operative housing society, written live and exported as PDF or DOCX.
+
+Reference document: `GIFT DEED (50-50).pdf` at the repository root — the gold
+standard for the recital order, the twenty-four operative covenants, the
+before-and-after shareholding table and the schedule particulars.
+
+### A1. Identifiers are now printed in full, reversing decision 8
+
+**Decision.** `mask_aadhaar` is gone. `format_aadhaar` groups the twelve digits
+as `1234 5678 9012` and the deed recites them whole, for both parties.
+
+**Why.** Decision 8 was wrong about the artefact. A deed presented for
+registration is the document that *identifies* the parties; `XXXX XXXX 9012`
+identifies nobody, and a Sub-Registrar rejects it. The privacy argument applies
+to a system that stores and displays other people's identifiers — not to a tool
+that drafts the user's own instrument from documents the user supplied.
+
+**Trade-off.** The full number is now present in API responses and client
+memory. Nothing is persisted server-side, and the number was already in the
+uploaded image that passed through the same path.
+
+**How to apply.** Malformed input is grouped as far as it goes rather than
+dropped, so the reviewer can see what was misread instead of finding a blank.
+
+### A2. Case type is a parameter, not a second code path
+
+**Decision.** Every registry became a dict keyed by case type —
+`REQUIREMENTS_BY_CASE_TYPE`, `FIELDS_BY_CASE_TYPE`,
+`NARRATIVE_SECTIONS_BY_CASE_TYPE`, `_PROMPTS_BY_CASE_TYPE`, `PARTY_ROLES`,
+`_AMOUNT_KEYS` — and `case_type` threads through extraction, generation,
+streaming and both exporters with `SALE_DEED` as the default on every signature.
+
+**Why.** The extractor, the SSE walker, the typing animation, the PDF geometry
+and the DOCX styles are all instrument-agnostic; only the field set, the
+checklist, the prompt and the section skeleton differ. Forking them would have
+doubled the surface that the degradation paths have to be tested on.
+
+**Trade-off.** Defaulting to `SALE_DEED` rather than requiring the argument
+means a caller that forgets it silently drafts a Sale Deed. Accepted because it
+keeps every pre-existing caller and the older deployed client working through a
+rolling deploy, where the frontend and backend are briefly out of step.
+
+### A3. The Gift Deed emits no new section styles
+
+**Decision.** `gift_deed.py` builds forty-eight sections using only the styles
+the Sale Deed already uses. `pdf.py`, `docx_export.py`, `deedStream.ts` and
+`LiveDeedCanvas.tsx` gained no new branches.
+
+**Why.** Three renderers have to agree on every style. A style added for one
+instrument and missed in one renderer fails silently — the paragraph falls
+through to a default and looks almost right. A test asserts the Gift Deed's
+styles are a subset of the Sale Deed's, which is the set proven in all three.
+
+**How to apply.** This is why the shareholding table and the schedule
+particulars are newline-separated labelled lines under the existing `boundaries`
+style, rather than a real table: that style is the one the renderers already
+split on `\n`. The sub-clause numbering (`1(II)`, `2(a)`, `3(iv)`) is carried in
+the clause *heading* string for the same reason — the clause renderer needs no
+notion of nesting.
+
+### A4. A reciprocal relationship is left blank rather than guessed
+
+**Decision.** The donee's relationship to the donor is required; the donor's
+reciprocal is derived only for `wife`/`husband`/`brother`/`sister`, and
+otherwise left as a fill-in line.
+
+**Why.** The reciprocal of "son" depends on the donor's gender, which the deed
+does not capture. Guessing "father" where the donor is the mother misdescribes a
+party to a registered instrument. A visible blank is a correction the draftsman
+makes in seconds; a plausible wrong word is one nobody reads twice.
+
+### A5. Gift Deed clauses are template-locked more tightly than Sale Deed ones
+
+**Decision.** Only `title_recital`, `gift_recital` and `schedule_body` are
+model-authored. The covenants — voluntariness, absence of consideration,
+irrevocability, delivery of possession, the society transfer undertakings — are
+precedent text.
+
+**Why.** Section 122 of the Transfer of Property Act makes absence of
+consideration constitutive of a gift, and section 126 limits revocation. A model
+that softens "irrevocable" or introduces consideration-like language does not
+produce a weaker draft; it produces a different instrument. Tests assert those
+phrases survive even when the model returns usable prose for the recitals.
+
+---
+
 ## Camera Filing → Live Sale Deed Generation
 
 Upgrade of the Camera Filing feature: uploaded documents are read, the
@@ -157,7 +247,7 @@ letters. The text it transcribed is better evidence than the field it inferred.
 not captured. Acceptable: the review form lets the user type anything in, and
 `merge` prefers the document that declares a field as its authoritative source.
 
-### 8. Aadhaar is masked at the point of extraction
+### 8. Aadhaar is masked at the point of extraction — **superseded by A1**
 
 **Decision.** `mask_aadhaar` reduces an Aadhaar number to `XXXX XXXX 9012` inside
 `extract_from_document`, before the value is stored, returned or logged.
@@ -169,6 +259,9 @@ generated deed.
 
 **Trade-off.** The full number cannot be recovered for a field that legitimately
 needs it at registration. The registrar takes that from the original document.
+
+**Superseded.** That trade-off turned out to be the whole requirement — the deed
+*is* the identification. Reversed in decision A1 above.
 
 ### 9. The PDF prints what the user approved, not a re-derivation
 
@@ -223,25 +316,25 @@ tests asserting the same invariants (five phases, unique ids, required-field
 coverage), and the shared ids are what would break loudly. **If a third consumer
 appears, this should move to a generated artefact.**
 
-### 13. Sale Deed is draftable; Divorce Case keeps its existing behaviour
+### 13. Only case types with a reference draft are draftable
 
-**Decision.** `DRAFTABLE_CASE_TYPES` contains only `Sale Deed`. Selecting
-`Divorce Case` shows its original checklist and the original "Submit Entire
-Filing" path.
+**Decision.** `DRAFTABLE_CASE_TYPES` contains `Sale Deed` and, since A1–A5,
+`Gift Deed`. Selecting `Divorce Case` shows its original checklist and the
+original "Submit Entire Filing" path.
 
-**Why.** The brief scopes court-ready generation to the Sale Deed, using the
-reference PDF as the standard. There is no equivalent reference for a divorce
-petition, and inventing one would produce a document nobody vouched for. The
-existing divorce flow was working and is left alone.
+**Why.** Each draftable type is anchored to a reference draft an advocate
+vouched for. There is no equivalent reference for a divorce petition, and
+inventing one would produce a document nobody vouched for. The existing divorce
+flow was working and is left alone.
 
 ### 14. Tests target the logic, not the model
 
-**Decision.** 140 backend tests (`backend/test_drafting.py`) and 50 frontend
-tests. Every Gemini call is mocked. Assertions cover the deed's structure and
+**Decision.** 215 backend tests (`backend/test_drafting.py`) and 67 frontend
+tests. Every Gemini call is mocked. Assertions cover both deeds' structure and
 language, Indian number-to-words and currency grouping, extraction precedence,
-identifier rescue, Aadhaar masking, SSE framing at arbitrary chunk boundaries,
-the typewriter, PDF page count and content, DOCX structure, and every endpoint
-including its failure paths.
+identifier rescue, identifiers printed whole, SSE framing at arbitrary chunk
+boundaries, the typewriter, PDF page count and content, DOCX structure, and
+every endpoint including its failure paths.
 
 **Why.** Tests that call the real model are slow, cost money and fail on quota
 rather than on regressions. What needs guarding is the deterministic machinery
@@ -283,6 +376,6 @@ New runtime dependencies: `reportlab`, `python-docx`.
 ## Running the tests
 
 ```bash
-cd backend && python -m pytest test_drafting.py -v     # 140 tests
-cd frontend && npm test                                # 50 tests
+cd backend && python -m pytest test_drafting.py -v     # 215 tests
+cd frontend && npm test                                # 67 tests
 ```

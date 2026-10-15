@@ -25,6 +25,7 @@ import { downloadFile, postForm, postJson } from "@/lib/api";
 import {
   DIVORCE_CASE,
   DeedFields,
+  GIFT_DEED,
   SALE_DEED,
   allDocuments,
   checklistFor,
@@ -90,7 +91,13 @@ export default function FileCasePage() {
     (doc) => documentStates[doc.id]?.status === "Uploaded",
   ).length;
   const draftable = isDraftable(selectedCaseType);
-  const missing = useMemo(() => missingRequiredFields(fields), [fields]);
+  const missing = useMemo(
+    () => missingRequiredFields(fields, selectedCaseType),
+    [fields, selectedCaseType],
+  );
+  // Whose name the download is filed under, and the word the headings use.
+  const principalParty =
+    selectedCaseType === GIFT_DEED ? fields.donor_name : fields.vendor_name;
 
   const labelFor = (docId: string) =>
     documents.find((doc) => doc.id === docId)?.label ?? docId;
@@ -263,7 +270,7 @@ export default function FileCasePage() {
   const startGeneration = () => {
     setEdits({});
     setFlowState("GENERATING");
-    void generation.start(fields);
+    void generation.start(fields, selectedCaseType);
   };
 
   const approvedSections = (): DeedSection[] => {
@@ -285,7 +292,10 @@ export default function FileCasePage() {
   const download = async (format: "pdf" | "docx") => {
     setIsBusy(true);
     setError(null);
-    const stem = (caseTitle.trim() || `Sale-Deed-${fields.vendor_name ?? "Draft"}`)
+    const stem = (
+      caseTitle.trim() ||
+      `${selectedCaseType.replace(/\s+/g, "-")}-${principalParty ?? "Draft"}`
+    )
       .replace(/[^\w\s-]/g, "")
       .trim();
     try {
@@ -406,6 +416,7 @@ export default function FileCasePage() {
                 }}
               >
                 <option value={SALE_DEED}>Sale Deed</option>
+                <option value={GIFT_DEED}>Gift Deed</option>
                 <option value={DIVORCE_CASE}>Divorce Case</option>
               </select>
             </div>
@@ -690,7 +701,7 @@ export default function FileCasePage() {
                       key={key}
                       className="rounded-full bg-amber-500/15 px-3 py-1 text-xs text-amber-200"
                     >
-                      {fieldLabel(key)}
+                      {fieldLabel(key, selectedCaseType)}
                     </li>
                   ))}
                 </ul>
@@ -701,6 +712,7 @@ export default function FileCasePage() {
               fields={fields}
               provenance={provenance}
               onChange={updateField}
+              caseType={selectedCaseType}
             />
 
             <div className="sticky bottom-0 mt-8 border-t border-slate-800 bg-slate-950/95 py-5 backdrop-blur">
@@ -733,7 +745,9 @@ export default function FileCasePage() {
                 <FileText className="h-6 w-6 text-indigo-400" />
                 <div>
                   <h2 className="text-xl font-bold">
-                    {isGenerationComplete ? "Sale Deed ready" : "Drafting your Sale Deed"}
+                    {isGenerationComplete
+                      ? `${selectedCaseType} ready`
+                      : `Drafting your ${selectedCaseType}`}
                   </h2>
                   <p className="text-xs text-slate-400">
                     {isGenerationComplete ? (

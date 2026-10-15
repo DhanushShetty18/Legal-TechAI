@@ -160,8 +160,10 @@ for when to revisit it.**
 
 ## Theme 6 — Scope deliberately, and say so
 
-**The decision:** `DRAFTABLE_CASE_TYPES` contains only `"Sale Deed"` —
-Divorce Case keeps its older, simpler "upload and submit" flow untouched
+**The decision:** a case type is only draftable once it has a vetted
+reference draft. That meant `DRAFTABLE_CASE_TYPES` held only `"Sale Deed"`
+at first, and now holds `"Gift Deed"` as well; Divorce Case, which still has
+no reference, keeps its older, simpler "upload and submit" flow untouched
 (decision 13).
 
 **The general principle:** the single highest-leverage thing a feature's
@@ -177,9 +179,18 @@ shaped by guesswork rather than by evidence — and for a legal document
 specifically, an unvetted abstraction is actively worse than a narrower
 tool that's honest about what it doesn't do yet.
 
+**What happened next, which is the point.** The second case did arrive, with
+its own reference (`GIFT DEED (50-50).pdf`), and the generalisation it forced
+was small and evidence-shaped: the registries became dicts keyed by case type
+and `case_type` threaded through as a parameter (decision A2). The renderers,
+the SSE walker and the typing animation needed no changes at all — because by
+then there were two real instruments to compare, and the comparison showed
+exactly which parts actually differ. Had the abstraction been built up front,
+it would almost certainly have been drawn in the wrong places.
+
 ## Theme 7 — Test what's actually deterministic; don't try to test the model's taste
 
-**The decision:** 140 backend tests, every Gemini call mocked, asserting
+**The decision:** 215 backend tests, every Gemini call mocked, asserting
 structure/formatting/precedence/degradation paths — explicitly **not**
 asserting that the AI's prose reads well (decision 14).
 

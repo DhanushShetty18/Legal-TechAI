@@ -160,19 +160,23 @@ Divorce Case flow is unchanged."
 ```python
 REQUIREMENTS_BY_CASE_TYPE: Dict[str, List[Dict[str, Any]]] = {
     SALE_DEED: SALE_DEED_REQUIREMENTS,
+    GIFT_DEED: GIFT_DEED_REQUIREMENTS,
     DIVORCE_CASE: DIVORCE_REQUIREMENTS,
 }
 
-DRAFTABLE_CASE_TYPES = [SALE_DEED]
+DRAFTABLE_CASE_TYPES = [SALE_DEED, GIFT_DEED]
 ```
 
 **Job:** `REQUIREMENTS_BY_CASE_TYPE` is the lookup table every "given a case
 type name, give me its checklist" operation goes through.
-`DRAFTABLE_CASE_TYPES` is a one-item list today — the single flag that
-decides whether the live-generation engine applies to a case type at all;
-`routers/drafting.py`'s `/case-types` endpoint, and the frontend's
-`isDraftable`, both ultimately check membership in lists exactly like this
-one (on each respective side).
+`DRAFTABLE_CASE_TYPES` is the single flag that decides whether the
+live-generation engine applies to a case type at all; `routers/drafting.py`'s
+`/case-types` endpoint, and the frontend's `isDraftable`, both ultimately
+check membership in lists exactly like this one (on each respective side).
+A case type earns a place on it by having a reference draft to be measured
+against — the Sale Deed has `Sale-Deed.pdf`, the Gift Deed has
+`GIFT DEED (50-50).pdf`, and the Divorce Case has neither, which is why it
+keeps its original "upload and submit" flow.
 
 ### `requirements_for(case_type)`
 

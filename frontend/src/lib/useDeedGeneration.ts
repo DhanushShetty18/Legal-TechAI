@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import { api } from "./api";
+import { SALE_DEED } from "./caseTypes";
 import {
   DeedEvent,
   DeedSection,
@@ -191,7 +192,7 @@ export function useDeedGeneration() {
   }, []);
 
   const start = useCallback(
-    async (fields: Record<string, string>) => {
+    async (fields: Record<string, string>, caseType: string = SALE_DEED) => {
       cancel();
       sectionsRef.current = [];
       streamDoneRef.current = false;
@@ -212,7 +213,7 @@ export function useDeedGeneration() {
             "Content-Type": "application/json",
             Accept: "text/event-stream",
           },
-          body: JSON.stringify({ fields }),
+          body: JSON.stringify({ fields, caseType }),
           signal: controller.signal,
         });
 

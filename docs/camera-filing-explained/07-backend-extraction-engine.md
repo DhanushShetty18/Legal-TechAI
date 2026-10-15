@@ -392,39 +392,37 @@ into a text field.
   that context a user's own (unparseable but still meaningful) text is more
   useful than a placeholder.
 
-### `mask_aadhaar(value)` and `normalise_pan(value)`
+### `format_aadhaar(value)` and `normalise_pan(value)`
 
 ```python
-def mask_aadhaar(value) -> str:
+def format_aadhaar(value) -> str:
     digits = re.sub(r"\D", "", str(value or ""))
-    if len(digits) < 4:
+    if not digits:
         return ""
-    return f"XXXX XXXX {digits[-4:]}"
+    return " ".join(digits[i:i + 4] for i in range(0, len(digits), 4))
 
 def normalise_pan(value) -> str:
     candidate = re.sub(r"[^A-Za-z0-9]", "", str(value or "")).upper()
     return candidate if re.fullmatch(r"[A-Z]{5}\d{4}[A-Z]", candidate) else str(value or "").strip()
 ```
 
-**Job:** `mask_aadhaar` is the **single function responsible for an Aadhaar
-number never being stored, logged, or displayed in full** anywhere this
-feature touches it — see `DECISIONS.md` decision 8, and note this function
-is called at the *extraction* boundary (document 07's
-`extract_from_document` and `reconcile_identifiers`, below), not at
-display/render time, so the unmasked number literally never exists past
-that one point. `normalise_pan` cleans up a PAN (India's Permanent Account
-Number, a tax ID) into its canonical form if it looks valid.
+**Job:** `format_aadhaar` presents an Aadhaar number the way a deed recites
+it — `1234 5678 9012`, in full. An earlier version of this feature masked it
+to `XXXX XXXX 9012`; that was reversed, because the deed is the document that
+*identifies* the parties and a Sub-Registrar rejects a masked identifier. See
+`DECISIONS.md` decision A1, which supersedes decision 8. `normalise_pan`
+cleans up a PAN (India's Permanent Account Number, a tax ID) into its
+canonical form if it looks valid.
 **Calls:** nothing.
 **Line by line:**
-- `mask_aadhaar`: `re.sub(r"\D", "", ...)` strips every non-digit character
+- `format_aadhaar`: `re.sub(r"\D", "", ...)` strips every non-digit character
   (spaces, which Aadhaar numbers are commonly printed/typed with, among
-  other stray characters) leaving just the raw digit sequence. If fewer
-  than 4 digits remain, there's nothing sensible to mask — return an empty
-  string rather than a nonsensical partial mask. Otherwise, always return
-  the fixed pattern `"XXXX XXXX "` followed by exactly the last four
-  digits (`digits[-4:]`) — regardless of whether the input had the correct
-  12-digit length; this function does not validate an Aadhaar number, it
-  only ever reveals its last four digits.
+  other stray characters) leaving just the raw digit sequence. Empty input
+  gives an empty string, which the generator turns into a fill-in line. The
+  join then regroups the digits in fours. Note it does not validate the
+  length: partial or malformed OCR output is grouped as far as it goes rather
+  than silently dropped, so the reviewer can see what was misread instead of
+  finding a blank where a number should be.
 - `normalise_pan`: strips anything that isn't a letter or digit and
   uppercases the rest, then checks that the result matches the exact PAN
   pattern (`[A-Z]{5}\d{4}[A-Z]` — five letters, four digits, one letter —
@@ -592,10 +590,10 @@ explicitly recognised and converted to a real `None`, so downstream code
 never has to deal with the literal string `"N/A"` masquerading as a real
 value.
 
-### `reconcile_identifiers(fields, raw_text, allowed_keys)`
+### `reconcile_identifiers(fields, raw_text, allowed_keys, case_type)`
 
 ```python
-def reconcile_identifiers(fields, raw_text, allowed_keys=None):
+def reconcile_identifiers(fields, raw_text, allowed_keys=None, case_type=SALE_DEED):
     text = (raw_text or "").upper()
     result = dict(fields)
     in_scope = None if allowed_keys is None else set(allowed_keys)
@@ -603,7 +601,7 @@ def reconcile_identifiers(fields, raw_text, allowed_keys=None):
     pans = _PAN_RE.findall(text)
     aadhaars = [a for a in _AADHAAR_RE.findall(raw_text or "") if len(re.sub(r"\D", "", a)) == 12]
 
-    for role in ("vendor", "purchaser"):
+    for role in PARTY_ROLES.get(case_type, PARTY_ROLES[SALE_DEED]):
         pan_key = f"{role}_pan"
         aadhaar_key = f"{role}_aadhaar"
         if in_scope is not None and not {pan_key, aadhaar_key} & in_scope:
@@ -622,7 +620,7 @@ def reconcile_identifiers(fields, raw_text, allowed_keys=None):
         if not source and len(aadhaars) == 1:
             source = aadhaars[0]
         if source:
-            result[aadhaar_key] = mask_aadhaar(source)
+            result[aadhaar_key] = format_aadhaar(source)
 
     return result
 ```
@@ -630,7 +628,7 @@ def reconcile_identifiers(fields, raw_text, allowed_keys=None):
 **Job:** this is the implementation of decision 7's "a pattern match beats
 the model's structured answer" — the regex safety net described conceptually
 in document 01, implemented here in full.
-**Calls:** `normalise_pan`, `mask_aadhaar` (both from `formatting.py`).
+**Calls:** `normalise_pan`, `format_aadhaar` (both from `formatting.py`).
 **Line by line:**
 - `text = (raw_text or "").upper()` — uppercased once, since PAN numbers
   are always uppercase and the regex is case-sensitive.
@@ -647,10 +645,12 @@ in document 01, implemented here in full.
   report them. The Aadhaar list filters to groups whose digits (ignoring
   internal spaces) total exactly 12 — `_AADHAAR_RE` alone could otherwise
   match a 12-digit run that's actually part of something else entirely.
-- `for role in ("vendor", "purchaser"):` — the rescue runs for both party
-  roles, regardless of which specific document is being processed (a
-  vendor's ID card should never populate the purchaser's PAN, which is
-  exactly what the scope check below prevents).
+- `for role in PARTY_ROLES.get(case_type, ...)` — the rescue runs for both
+  party roles of the instrument being drafted: `("vendor", "purchaser")` for
+  a Sale Deed, `("donor", "donee")` for a Gift Deed. Both roles are tried
+  regardless of which specific document is being processed (a vendor's ID
+  card should never populate the purchaser's PAN, which is exactly what the
+  scope check below prevents).
 - `if in_scope is not None and not {pan_key, aadhaar_key} & in_scope: continue`
   — **this is the scope guard decision 7 explicitly calls out**: `&` on two
   sets is intersection; if neither `{role}_pan` nor `{role}_aadhaar` is
@@ -670,10 +670,9 @@ in document 01, implemented here in full.
   function deliberately does **not** guess which one is correct; it leaves
   the ambiguity for a human to resolve at review.
 - The Aadhaar logic follows the same shape but simpler (no "is this valid"
-  check needed beyond the 12-digit count already applied above), and
-  **always** masks the result through `mask_aadhaar` before storing it —
-  this is the second of the two places (with `extract_from_document` below)
-  guaranteeing a full Aadhaar number can never survive past this layer.
+  check needed beyond the 12-digit count already applied above), and passes
+  the result through `format_aadhaar` before storing it, so the value is
+  already grouped in fours by the time the review form or the deed sees it.
 
 ### `extract_from_document(image_blob, mime_type, doc_id, doc_label, case_type)`
 

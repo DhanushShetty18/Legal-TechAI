@@ -1,5 +1,6 @@
 /**
- * Case types, their document checklists and the Sale Deed field set.
+ * Case types, their document checklists and the field sets that drive the
+ * review form.
  *
  * This mirrors `backend/modules/drafting/checklists.py` and `schema.py`. The
  * duplication is deliberate: the backend runs on a free Render instance that
@@ -11,6 +12,7 @@
  */
 
 export const SALE_DEED = "Sale Deed";
+export const GIFT_DEED = "Gift Deed";
 export const DIVORCE_CASE = "Divorce Case";
 
 export interface RequiredDocument {
@@ -82,6 +84,61 @@ export const SALE_DEED_CHECKLIST: ChecklistPhase[] = [
   },
 ];
 
+/**
+ * A gift of a flat held through a co-operative housing society, which is what
+ * the reference deed is. The society documents carry as much weight as the
+ * title documents here: without the Society's NOC and the share certificate the
+ * transfer cannot be recorded, however good the Donor's title.
+ */
+export const GIFT_DEED_CHECKLIST: ChecklistPhase[] = [
+  {
+    phase: "Phase 1: Identity, Capacity & Relationship",
+    documents: [
+      { id: "donor_id", required: true, label: "Proof of Identity of the Donor: Aadhaar, PAN Card, Passport or Voter ID." },
+      { id: "donee_id", required: true, label: "Proof of Identity of the Donee: Aadhaar, PAN Card, Passport or Voter ID." },
+      { id: "donor_address_proof", required: true, label: "Proof of Address of the Donor: utility bill, bank statement or registered rent agreement." },
+      { id: "donee_address_proof", required: true, label: "Proof of Address of the Donee: utility bill, bank statement or registered rent agreement." },
+      { id: "relationship_proof", required: true, label: "Proof of relationship between the Donor and the Donee: birth certificate, ration card, family register or school record naming both." },
+      { id: "party_photographs", required: false, label: "Passport-size photographs of the Donor and the Donee, for affixing on the deed." },
+    ],
+  },
+  {
+    phase: "Phase 2: Title & Chain of Ownership",
+    documents: [
+      { id: "parent_agreement", required: true, label: "Registered Agreement / Sale Deed by which the Donor acquired the flat, together with any deed of ratification recording the shareholding ratio." },
+      { id: "chain_of_title", required: false, label: "Chain of title documents tracing ownership for the preceding 30 years." },
+      { id: "share_certificate", required: true, label: "Share Certificate issued by the Society in the name of the Donor." },
+      { id: "society_registration_certificate", required: true, label: "Registration Certificate of the Co-operative Housing Society." },
+      { id: "index_ii_or_property_card", required: false, label: "Index-II of the parent agreement, or the Property Card / C.T.S. extract for the plot." },
+    ],
+  },
+  {
+    phase: "Phase 3: Society & Statutory Clearances",
+    documents: [
+      { id: "society_noc", required: true, label: "No-Objection Certificate from the Society for the transfer of the shares and interest by gift." },
+      { id: "encumbrance_certificate", required: true, label: "Encumbrance Certificate establishing the flat is free of mortgage, lien or charge." },
+      { id: "property_tax_receipt", required: true, label: "Latest municipal property tax paid receipt for the said flat." },
+      { id: "maintenance_noc", required: false, label: "Society certificate that maintenance and sinking-fund dues stand cleared." },
+      { id: "occupancy_certificate", required: false, label: "Occupancy / Completion Certificate for the building." },
+    ],
+  },
+  {
+    phase: "Phase 4: Valuation & Stamp Duty",
+    documents: [
+      { id: "market_valuation", required: true, label: "Ready-reckoner valuation or registered valuer's report for the share being gifted." },
+      { id: "stamp_duty_challan", required: true, label: "Stamp Duty / Registration Fee challan, e-Stamp certificate or adjudication order." },
+      { id: "donor_declaration", required: false, label: "Donor's declaration that the gift is voluntary, without consideration and irrevocable." },
+      { id: "heirs_noc", required: false, label: "Consent or no-objection of the Donor's other legal heirs, where obtained." },
+    ],
+  },
+  {
+    phase: "Phase 5: Attesting Witnesses",
+    documents: [
+      { id: "witness_ids", required: true, label: "Proof of Identity and Address of the two attesting witnesses." },
+    ],
+  },
+];
+
 export const DIVORCE_CHECKLIST: ChecklistPhase[] = [
   {
     phase: "Phase 1: The Initial Filing (Identity & Marriage Proof)",
@@ -126,11 +183,12 @@ export const DIVORCE_CHECKLIST: ChecklistPhase[] = [
 
 export const CHECKLISTS: Record<string, ChecklistPhase[]> = {
   [SALE_DEED]: SALE_DEED_CHECKLIST,
+  [GIFT_DEED]: GIFT_DEED_CHECKLIST,
   [DIVORCE_CASE]: DIVORCE_CHECKLIST,
 };
 
 /** Case types the drafting engine can produce a court-ready document for. */
-export const DRAFTABLE_CASE_TYPES = [SALE_DEED];
+export const DRAFTABLE_CASE_TYPES = [SALE_DEED, GIFT_DEED];
 
 export const EXECUTION = "Execution";
 export const VENDOR_GROUP = "Vendor (Seller)";
@@ -153,7 +211,7 @@ export const SALE_DEED_FIELDS: FieldDef[] = [
   { key: "vendor_nationality", label: "Nationality", group: VENDOR_GROUP, placeholder: "Indian" },
   { key: "vendor_address", label: "Residential Address", group: VENDOR_GROUP, required: true, kind: "textarea" },
   { key: "vendor_pan", label: "PAN Card No.", group: VENDOR_GROUP, required: true, placeholder: "ABCDE1234F" },
-  { key: "vendor_aadhaar", label: "Aadhaar No.", group: VENDOR_GROUP, helpText: "Only the last 4 digits are printed on the deed." },
+  { key: "vendor_aadhaar", label: "Aadhaar No.", group: VENDOR_GROUP, helpText: "Printed in full on the deed, as the Sub-Registrar requires." },
 
   { key: "purchaser_name", label: "Full Name", group: PURCHASER_GROUP, required: true },
   { key: "purchaser_father_name", label: "Father's / Husband's Name", group: PURCHASER_GROUP, required: true },
@@ -163,7 +221,7 @@ export const SALE_DEED_FIELDS: FieldDef[] = [
   { key: "purchaser_nationality", label: "Nationality", group: PURCHASER_GROUP, placeholder: "Indian" },
   { key: "purchaser_address", label: "Residential Address", group: PURCHASER_GROUP, required: true, kind: "textarea" },
   { key: "purchaser_pan", label: "PAN Card No.", group: PURCHASER_GROUP, required: true },
-  { key: "purchaser_aadhaar", label: "Aadhaar No.", group: PURCHASER_GROUP, helpText: "Only the last 4 digits are printed on the deed." },
+  { key: "purchaser_aadhaar", label: "Aadhaar No.", group: PURCHASER_GROUP, helpText: "Printed in full on the deed, as the Sub-Registrar requires." },
 
   { key: "prior_deed_document_no", label: "Prior Deed Document No.", group: TITLE_GROUP, required: true },
   { key: "prior_deed_book_no", label: "Addl. Book No.", group: TITLE_GROUP, placeholder: "Book-I" },
@@ -203,24 +261,136 @@ export const SALE_DEED_FIELDS: FieldDef[] = [
   { key: "witness_2_address", label: "Witness 2 - Address", group: WITNESSES_GROUP },
 ];
 
-/** Mirrors `DERIVABLE_FIELDS` on the backend: the generator writes these itself. */
-export const DERIVABLE_FIELDS = new Set(["sale_consideration_words", "title_recital"]);
+export const DONOR_GROUP = "Donor";
+export const DONEE_GROUP = "Donee";
+export const GIFT_GROUP = "Gift & Relationship";
+export const GIFT_TITLE_GROUP = "Title & Chain of Ownership";
+export const SOCIETY_GROUP = "Society & Shares";
 
-export const FIELD_GROUPS: string[] = SALE_DEED_FIELDS.reduce<string[]>((groups, field) => {
-  if (!groups.includes(field.group)) groups.push(field.group);
-  return groups;
-}, []);
+export const GIFT_DEED_FIELDS: FieldDef[] = [
+  { key: "place_of_execution", label: "Place of Execution", group: EXECUTION, required: true, placeholder: "e.g. Mumbai" },
+  { key: "date_of_execution", label: "Date of Execution", group: EXECUTION, required: true, kind: "date" },
+
+  { key: "donor_name", label: "Full Name", group: DONOR_GROUP, required: true, placeholder: "e.g. Mr. Prakash Hiralal Desai" },
+  { key: "donor_father_name", label: "Father's / Husband's Name", group: DONOR_GROUP },
+  { key: "donor_age", label: "Age", group: DONOR_GROUP, required: true, kind: "number" },
+  { key: "donor_occupation", label: "Professional Status", group: DONOR_GROUP, placeholder: "e.g. Retired" },
+  { key: "donor_religion", label: "Religion", group: DONOR_GROUP, placeholder: "Hindu", helpText: "Recited as 'an adult Hindu Indian Inhabitant'." },
+  { key: "donor_nationality", label: "Nationality", group: DONOR_GROUP, placeholder: "Indian" },
+  { key: "donor_address", label: "Residential Address", group: DONOR_GROUP, required: true, kind: "textarea" },
+  { key: "donor_pan", label: "PAN Card No.", group: DONOR_GROUP, required: true, placeholder: "ABCDE1234F" },
+  { key: "donor_aadhaar", label: "Aadhaar No.", group: DONOR_GROUP, helpText: "Printed in full on the deed, as the Sub-Registrar requires." },
+  { key: "donor_passport", label: "Passport No.", group: DONOR_GROUP, helpText: "Recited instead of PAN where the party is resident abroad." },
+
+  { key: "donee_name", label: "Full Name", group: DONEE_GROUP, required: true },
+  { key: "donee_father_name", label: "Father's / Husband's Name", group: DONEE_GROUP },
+  { key: "donee_age", label: "Age", group: DONEE_GROUP, required: true, kind: "number" },
+  { key: "donee_occupation", label: "Professional Status", group: DONEE_GROUP },
+  { key: "donee_religion", label: "Religion", group: DONEE_GROUP, placeholder: "Hindu" },
+  { key: "donee_nationality", label: "Nationality", group: DONEE_GROUP, placeholder: "Indian" },
+  { key: "donee_address", label: "Residential Address", group: DONEE_GROUP, required: true, kind: "textarea" },
+  { key: "donee_pan", label: "PAN Card No.", group: DONEE_GROUP, required: true },
+  { key: "donee_aadhaar", label: "Aadhaar No.", group: DONEE_GROUP, helpText: "Printed in full on the deed, as the Sub-Registrar requires." },
+  { key: "donee_passport", label: "Passport No.", group: DONEE_GROUP },
+
+  { key: "donee_relationship", label: "The Donee is the Donor's", group: GIFT_GROUP, required: true, placeholder: "e.g. Son", helpText: "Recited as the natural love and affection founding the gift." },
+  { key: "donor_relationship", label: "The Donor is the Donee's", group: GIFT_GROUP, placeholder: "e.g. Father", helpText: "Left blank, the reciprocal is taken from the Donee's relationship." },
+  { key: "gift_share_percentage", label: "Share Gifted (%)", group: GIFT_GROUP, required: true, placeholder: "e.g. 50", helpText: "The undivided share of the Donor passing under this deed." },
+  { key: "gift_recital", label: "Why the gift is being made", group: GIFT_GROUP, kind: "textarea", helpText: "Left blank, this recital is drafted from the relationship." },
+  { key: "market_value", label: "Market Value (Rs.)", group: GIFT_GROUP, kind: "number", helpText: "Stamp duty on a gift is charged on the value of the share gifted." },
+  { key: "stamp_duty_paid", label: "Stamp Duty Paid (Rs.)", group: GIFT_GROUP, kind: "number" },
+  { key: "registration_fee", label: "Registration Fee (Rs.)", group: GIFT_GROUP, kind: "number" },
+  { key: "stamp_duty_borne_by", label: "Stamp Duty & Registration Borne By", group: GIFT_GROUP, placeholder: "Donor", helpText: "The reference deed places the whole burden on the Donor." },
+
+  { key: "prior_agreement_date", label: "Date of Prior Agreement", group: GIFT_TITLE_GROUP, kind: "date", helpText: "The agreement under which the Donor acquired the property." },
+  { key: "prior_agreement_parties", label: "Parties to the Prior Agreement", group: GIFT_TITLE_GROUP, kind: "textarea" },
+  { key: "title_recital", label: "How the Donor acquired title", group: GIFT_TITLE_GROUP, kind: "textarea", helpText: "Left blank, this recital is drafted from the prior agreement." },
+  { key: "co_owner_name", label: "Co-owner Retaining a Share", group: GIFT_TITLE_GROUP, helpText: "Named in the before-and-after share table." },
+  { key: "co_owner_share", label: "Co-owner's Share (%)", group: GIFT_TITLE_GROUP, placeholder: "e.g. 50" },
+
+  { key: "society_name", label: "Co-operative Housing Society", group: SOCIETY_GROUP, required: true, placeholder: "e.g. Vishwashanti Co-op. Hsg. Soc. Ltd." },
+  { key: "society_registration_no", label: "Society Registration No.", group: SOCIETY_GROUP },
+  { key: "society_registration_date", label: "Society Registration Date", group: SOCIETY_GROUP, kind: "date" },
+  { key: "society_address", label: "Society Address", group: SOCIETY_GROUP, kind: "textarea" },
+  { key: "share_certificate_no", label: "Share Certificate No.", group: SOCIETY_GROUP, required: true },
+  { key: "share_count", label: "Number of Shares", group: SOCIETY_GROUP, placeholder: "e.g. 5" },
+  { key: "share_face_value", label: "Face Value per Share (Rs.)", group: SOCIETY_GROUP, placeholder: "e.g. 50" },
+  { key: "share_distinctive_nos", label: "Distinctive Share Nos.", group: SOCIETY_GROUP, placeholder: "e.g. 021 to 025" },
+
+  { key: "flat_number", label: "Flat No.", group: PROPERTY_GROUP, required: true, placeholder: "e.g. 101" },
+  { key: "floor_number", label: "Floor", group: PROPERTY_GROUP, placeholder: "e.g. 1st Floor" },
+  { key: "building_name", label: "Building Name", group: PROPERTY_GROUP, required: true },
+  { key: "carpet_area", label: "Carpet Area", group: PROPERTY_GROUP, required: true, placeholder: "e.g. 540 sq. ft." },
+  { key: "year_of_construction", label: "Year of Construction", group: PROPERTY_GROUP },
+  { key: "building_floors", label: "No. of Floors in the Building", group: PROPERTY_GROUP },
+  { key: "lift_available", label: "Lift", group: PROPERTY_GROUP, placeholder: "Yes / No" },
+  { key: "plot_number", label: "Plot No.", group: PROPERTY_GROUP },
+  { key: "survey_number", label: "Survey No.", group: PROPERTY_GROUP },
+  { key: "cts_number", label: "C.T.S. No.", group: PROPERTY_GROUP },
+  { key: "street_number", label: "Street No. / Road", group: PROPERTY_GROUP },
+  { key: "village_or_city", label: "Village / City", group: PROPERTY_GROUP, required: true },
+  { key: "taluka", label: "Taluka", group: PROPERTY_GROUP },
+  { key: "district", label: "District", group: PROPERTY_GROUP, required: true },
+  { key: "state", label: "State", group: PROPERTY_GROUP, required: true },
+  { key: "property_description", label: "Property Description", group: PROPERTY_GROUP, kind: "textarea", helpText: "Left blank, the schedule is drafted from the particulars above." },
+
+  { key: "witness_1_name", label: "Witness 1 - Name", group: WITNESSES_GROUP, required: true },
+  { key: "witness_1_address", label: "Witness 1 - Address", group: WITNESSES_GROUP },
+  { key: "witness_2_name", label: "Witness 2 - Name", group: WITNESSES_GROUP, required: true },
+  { key: "witness_2_address", label: "Witness 2 - Address", group: WITNESSES_GROUP },
+];
+
+/** Mirrors `DERIVABLE_FIELDS` on the backend: the generator writes these itself. */
+export const DERIVABLE_FIELDS = new Set([
+  "sale_consideration_words",
+  "title_recital",
+  "gift_recital",
+]);
+
+export const FIELDS_BY_CASE_TYPE: Record<string, FieldDef[]> = {
+  [SALE_DEED]: SALE_DEED_FIELDS,
+  [GIFT_DEED]: GIFT_DEED_FIELDS,
+  [DIVORCE_CASE]: [],
+};
+
+/**
+ * Groups whose labels repeat across the two parties, so the label alone is
+ * ambiguous: "Full Name" could be either side's. Used by `fieldLabel`.
+ */
+const PARTY_GROUPS: Record<string, string[]> = {
+  [SALE_DEED]: [VENDOR_GROUP, PURCHASER_GROUP],
+  [GIFT_DEED]: [DONOR_GROUP, DONEE_GROUP],
+};
+
+export function fieldsFor(caseType: string): FieldDef[] {
+  return FIELDS_BY_CASE_TYPE[caseType] ?? [];
+}
+
+/** The groups of a case type, in the order the deed reads. */
+export function fieldGroupsFor(caseType: string): string[] {
+  return fieldsFor(caseType).reduce<string[]>((groups, field) => {
+    if (!groups.includes(field.group)) groups.push(field.group);
+    return groups;
+  }, []);
+}
+
+export const FIELD_GROUPS: string[] = fieldGroupsFor(SALE_DEED);
 
 export type DeedFields = Record<string, string>;
 
 /** Required particulars the user still has to supply before the deed can be drafted. */
-export function missingRequiredFields(fields: DeedFields): string[] {
-  return SALE_DEED_FIELDS.filter(
-    (field) =>
-      field.required &&
-      !DERIVABLE_FIELDS.has(field.key) &&
-      !String(fields[field.key] ?? "").trim(),
-  ).map((field) => field.key);
+export function missingRequiredFields(
+  fields: DeedFields,
+  caseType: string = SALE_DEED,
+): string[] {
+  return fieldsFor(caseType)
+    .filter(
+      (field) =>
+        field.required &&
+        !DERIVABLE_FIELDS.has(field.key) &&
+        !String(fields[field.key] ?? "").trim(),
+    )
+    .map((field) => field.key);
 }
 
 export function checklistFor(caseType: string): ChecklistPhase[] {
@@ -235,9 +405,9 @@ export function allDocuments(caseType: string): RequiredDocument[] {
   return checklistFor(caseType).flatMap((phase) => phase.documents);
 }
 
-export function fieldLabel(key: string): string {
-  const field = SALE_DEED_FIELDS.find((candidate) => candidate.key === key);
+export function fieldLabel(key: string, caseType: string = SALE_DEED): string {
+  const field = fieldsFor(caseType).find((candidate) => candidate.key === key);
   if (!field) return key;
-  const scoped = [VENDOR_GROUP, PURCHASER_GROUP].includes(field.group);
+  const scoped = (PARTY_GROUPS[caseType] ?? []).includes(field.group);
   return scoped ? `${field.group.split(" ")[0]} - ${field.label}` : field.label;
 }

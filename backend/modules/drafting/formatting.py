@@ -154,12 +154,18 @@ def format_long_date(value) -> str:
     return f"{day} {month} {year}"
 
 
-def mask_aadhaar(value) -> str:
-    """Aadhaar must never be reproduced in full; print only the last 4 digits."""
+def format_aadhaar(value) -> str:
+    """Group a 12-digit Aadhaar as '1234 5678 9012'.
+
+    A deed presented for registration must recite the identifier in full - a
+    masked number is not an identification of the party, and the Sub-Registrar
+    will reject it. Partial or malformed input is returned grouped as far as it
+    goes rather than silently dropped, so the reviewer can see what was read.
+    """
     digits = re.sub(r"\D", "", str(value or ""))
-    if len(digits) < 4:
+    if not digits:
         return ""
-    return f"XXXX XXXX {digits[-4:]}"
+    return " ".join(digits[i:i + 4] for i in range(0, len(digits), 4))
 
 
 def normalise_pan(value) -> str:

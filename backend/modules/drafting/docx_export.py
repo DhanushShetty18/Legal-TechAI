@@ -1,4 +1,4 @@
-"""Editable DOCX export of the Sale Deed.
+"""Editable DOCX export of the deed.
 
 The PDF is the artefact that gets printed and registered; this is the copy an
 advocate opens to make the last few amendments before registration. It carries
@@ -15,6 +15,7 @@ from docx.enum.text import WD_ALIGN_PARAGRAPH
 from docx.shared import Inches, Pt
 
 from .generator import build_sections
+from .schema import SALE_DEED
 
 _FINGERS = ["Thumb", "Index Finger", "Middle Finger", "Fore Finger", "Little Finger"]
 
@@ -64,9 +65,10 @@ def _impression_table(document: "Document") -> None:
 def render_sale_deed_docx(
     sections: Optional[List[Dict[str, Any]]] = None,
     fields: Optional[Dict[str, Any]] = None,
+    case_type: str = SALE_DEED,
 ) -> io.BytesIO:
     if sections is None:
-        sections = [dict(s) for s in build_sections(fields or {})]
+        sections = [dict(s) for s in build_sections(fields or {}, case_type=case_type)]
 
     document = Document()
     _configure(document)

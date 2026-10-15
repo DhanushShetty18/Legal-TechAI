@@ -5,9 +5,10 @@ import { AlertCircle, CheckCircle2, ChevronDown, Sparkles } from "lucide-react";
 
 import {
   DeedFields,
-  FIELD_GROUPS,
   FieldDef,
-  SALE_DEED_FIELDS,
+  SALE_DEED,
+  fieldGroupsFor,
+  fieldsFor,
   missingRequiredFields,
 } from "@/lib/caseTypes";
 
@@ -16,6 +17,7 @@ interface ExtractedFieldsFormProps {
   /** Field key -> the document id (or "user") the value came from. */
   provenance: Record<string, string>;
   onChange: (key: string, value: string) => void;
+  caseType?: string;
 }
 
 /**
@@ -30,14 +32,18 @@ export default function ExtractedFieldsForm({
   fields,
   provenance,
   onChange,
+  caseType = SALE_DEED,
 }: ExtractedFieldsFormProps) {
-  const missing = useMemo(() => new Set(missingRequiredFields(fields)), [fields]);
+  const missing = useMemo(
+    () => new Set(missingRequiredFields(fields, caseType)),
+    [fields, caseType],
+  );
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
 
   const groups = useMemo(
     () =>
-      FIELD_GROUPS.map((group) => {
-        const groupFields = SALE_DEED_FIELDS.filter((f) => f.group === group);
+      fieldGroupsFor(caseType).map((group) => {
+        const groupFields = fieldsFor(caseType).filter((f) => f.group === group);
         return {
           group,
           fields: groupFields,
@@ -47,7 +53,7 @@ export default function ExtractedFieldsForm({
           ).length,
         };
       }),
-    [fields, missing],
+    [fields, missing, caseType],
   );
 
   return (

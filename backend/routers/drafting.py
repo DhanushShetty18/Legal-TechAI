@@ -22,11 +22,11 @@ from modules.drafting import (
     DRAFTABLE_CASE_TYPES,
     REQUIREMENTS_BY_CASE_TYPE,
     SALE_DEED,
-    SALE_DEED_FIELDS,
     build_sections,
     estimate_pages,
     extract_from_document,
     extraction_summary,
+    fields_for,
     llm_available,
     merge_extractions,
     render_plain_text,
@@ -84,13 +84,18 @@ class ExportRequest(BaseModel):
 def _sections_payload(request: ExportRequest) -> List[Dict[str, Any]]:
     if request.sections:
         return [section.model_dump() for section in request.sections]
-    return [dict(section) for section in build_sections(request.fields)]
+    return [
+        dict(section)
+        for section in build_sections(request.fields, case_type=request.caseType)
+    ]
 
 
-def _safe_filename(name: Optional[str], extension: str) -> str:
+def _safe_filename(name: Optional[str], extension: str,
+                   case_type: str = SALE_DEED) -> str:
+    fallback = case_type.replace(" ", "-") or "Deed"
     stem = "".join(
-        ch for ch in (name or "Sale-Deed") if ch.isalnum() or ch in "-_ "
-    ).strip() or "Sale-Deed"
+        ch for ch in (name or fallback) if ch.isalnum() or ch in "-_ "
+    ).strip() or fallback
     return f"{stem.replace(' ', '-')}.{extension}"
 
 
@@ -119,8 +124,7 @@ def get_requirements(case_type: str = SALE_DEED) -> Dict[str, Any]:
         "caseType": case_type,
         "draftable": case_type in DRAFTABLE_CASE_TYPES,
         "phases": phases,
-        "fields": [f.as_dict() for f in SALE_DEED_FIELDS]
-        if case_type == SALE_DEED else [],
+        "fields": [f.as_dict() for f in fields_for(case_type)],
     }
 
 
@@ -146,6 +150,13 @@ async def extract_documents(
 
     ids = [part.strip() for part in doc_ids.split(",")] if doc_ids else []
 
+    # An upload with no checklist entry named for it is attributed to the first
+    # document of the case type, which is the one the UI asks for first.
+    phases = requirements_for(case_type)
+    default_doc_id = (
+        phases[0]["documents"][0]["id"] if phases and phases[0]["documents"] else ""
+    )
+
     results: List[Dict[str, Any]] = []
     for index, upload in enumerate(files):
         content_type = upload.content_type or ""
@@ -167,7 +178,7 @@ async def extract_documents(
                 detail=f"{upload.filename or 'file'} exceeds the 12 MB limit.",
             )
 
-        doc_id = ids[index] if index < len(ids) and ids[index] else "vendor_id"
+        doc_id = ids[index] if index < len(ids) and ids[index] else default_doc_id
         results.append(
             extract_from_document(
                 contents,
@@ -186,7 +197,7 @@ async def extract_documents(
         ],
         "fields": merged["fields"],
         "provenance": merged["provenance"],
-        **extraction_summary(merged["fields"]),
+        **extraction_summary(merged["fields"], case_type),
     }
 
 
@@ -216,7 +227,7 @@ def merge(request: MergeRequest) -> Dict[str, Any]:
         "caseType": request.caseType,
         "fields": fields,
         "provenance": provenance,
-        **extraction_summary(fields),
+        **extraction_summary(fields, request.caseType),
     }
 
 
@@ -226,7 +237,8 @@ async def generate(request: GenerateRequest) -> StreamingResponse:
 
     def event_source():
         try:
-            for event in stream_document(request.fields, use_llm=request.useLlm):
+            for event in stream_document(request.fields, use_llm=request.useLlm,
+                                         case_type=request.caseType):
                 yield f"data: {json.dumps(event, ensure_ascii=False)}\n\n"
         except Exception as exc:  # noqa: BLE001 - the client needs to hear why
             logger.exception("Generation failed")
@@ -250,12 +262,16 @@ async def generate(request: GenerateRequest) -> StreamingResponse:
 def preview(request: GenerateRequest) -> Dict[str, Any]:
     """The deed in one shot, with no model call. Used by tests and as the
     fallback for clients that cannot hold an SSE connection open."""
-    sections = [dict(section) for section in build_sections(request.fields)]
+    sections = [
+        dict(section)
+        for section in build_sections(request.fields, case_type=request.caseType)
+    ]
     return {
+        "caseType": request.caseType,
         "sections": sections,
         "plainText": render_plain_text(sections),
         "estimatedPages": estimate_pages(sections),
-        **extraction_summary(request.fields),
+        **extraction_summary(request.fields, request.caseType),
     }
 
 
@@ -268,12 +284,13 @@ def export_pdf(request: ExportRequest) -> StreamingResponse:
             sections=_sections_payload(request),
             fields=request.fields,
             first_page_top_offset=max(0.0, request.stampPaperOffsetInches) * inch,
+            case_type=request.caseType,
         )
     except Exception as exc:  # noqa: BLE001
         logger.exception("PDF rendering failed")
         raise HTTPException(status_code=500, detail=f"PDF rendering failed: {exc}")
 
-    filename = _safe_filename(request.filename, "pdf")
+    filename = _safe_filename(request.filename, "pdf", request.caseType)
     return StreamingResponse(
         buffer,
         media_type="application/pdf",
@@ -287,12 +304,13 @@ def export_docx(request: ExportRequest) -> StreamingResponse:
         buffer = render_sale_deed_docx(
             sections=_sections_payload(request),
             fields=request.fields,
+            case_type=request.caseType,
         )
     except Exception as exc:  # noqa: BLE001
         logger.exception("DOCX rendering failed")
         raise HTTPException(status_code=500, detail=f"DOCX rendering failed: {exc}")
 
-    filename = _safe_filename(request.filename, "docx")
+    filename = _safe_filename(request.filename, "docx", request.caseType)
     return StreamingResponse(
         buffer,
         media_type=(

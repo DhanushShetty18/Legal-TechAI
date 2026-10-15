@@ -1,7 +1,8 @@
-"""Court-ready PDF rendering of the Sale Deed.
+"""Court-ready PDF rendering of the deed.
 
-Laid out to match the model draft in ``Sale-Deed.pdf`` and to survive being
-printed on legal or green paper and bound: a wide left margin for the binding,
+Laid out to match the model drafts in ``Sale-Deed.pdf`` and
+``GIFT DEED (50-50).pdf`` and to survive being printed on legal or green paper
+and bound: a wide left margin for the binding,
 Times throughout, justified body text, hanging-indent numbered clauses, and the
 signature and thumb-impression pages the Sub-Registrar's office expects.
 
@@ -31,6 +32,7 @@ from reportlab.platypus import (
 )
 
 from .generator import build_sections
+from .schema import GIFT_DEED, SALE_DEED
 
 # Binding margin on the left, comfortable gutter on the right.
 LEFT_MARGIN = 1.6 * inch
@@ -42,6 +44,21 @@ BODY_FONT = "Times-Roman"
 BOLD_FONT = "Times-Bold"
 
 _FINGERS = ["Thumb", "Index Finger", "Middle Finger", "Fore Finger", "Little Finger"]
+
+# Whose photograph box and impression grid a signature page carries. Keyed by
+# section id so a deed between any pair of roles renders correctly.
+_SIGNATORY_ROLES = {
+    "sign_vendor": "Vendor",
+    "sign_purchaser": "Purchaser",
+    "sign_donor": "Donor",
+    "sign_donee": "Donee",
+}
+
+# Document metadata and the running header, per case type.
+_DOCUMENT_META = {
+    SALE_DEED: ("SALE DEED", "Deed of Absolute Sale"),
+    GIFT_DEED: ("GIFT DEED", "Deed of Gift"),
+}
 
 
 def _styles() -> Dict[str, ParagraphStyle]:
@@ -224,7 +241,7 @@ def build_story(sections: List[Dict[str, Any]], styles: Dict[str, ParagraphStyle
             story.append(KeepTogether(block))
 
         elif style_name == "signature-block":
-            role = "Vendor" if section.get("id") == "sign_vendor" else "Purchaser"
+            role = _SIGNATORY_ROLES.get(str(section.get("id")), "Executant")
             story.append(PageBreak())
             story.extend(_signature_page(section, styles, width, role))
 
@@ -244,32 +261,51 @@ def build_story(sections: List[Dict[str, Any]], styles: Dict[str, ParagraphStyle
     return story
 
 
-def _page_furniture(canvas, doc):
+def _deed_name(sections: List[Dict[str, Any]], case_type: str) -> str:
+    """The running header. Taken from the deed's own title block where there is
+    one, so a document the user edited carries the heading they saw."""
+    for section in sections:
+        if section.get("style") == "title":
+            title = str(section.get("body") or "").strip()
+            if title:
+                return title.upper()
+    return _DOCUMENT_META.get(case_type, _DOCUMENT_META[SALE_DEED])[0]
+
+
+def _page_furniture_for(deed_name: str):
     """Running footer: page number, and the deed name from page two onwards."""
-    canvas.saveState()
-    width, height = A4
-    canvas.setFont(BODY_FONT, 9)
-    canvas.setFillColor(colors.HexColor("#444444"))
-    canvas.drawCentredString(width / 2.0, 0.6 * inch, f"Page {doc.page}")
-    if doc.page > 1:
-        canvas.drawRightString(width - RIGHT_MARGIN, height - 0.62 * inch, "SALE DEED")
-        canvas.setStrokeColor(colors.HexColor("#999999"))
-        canvas.setLineWidth(0.4)
-        canvas.line(LEFT_MARGIN, height - 0.72 * inch,
-                    width - RIGHT_MARGIN, height - 0.72 * inch)
-    canvas.restoreState()
+
+    def _page_furniture(canvas, doc):
+        canvas.saveState()
+        width, height = A4
+        canvas.setFont(BODY_FONT, 9)
+        canvas.setFillColor(colors.HexColor("#444444"))
+        canvas.drawCentredString(width / 2.0, 0.6 * inch, f"Page {doc.page}")
+        if doc.page > 1:
+            canvas.drawRightString(width - RIGHT_MARGIN, height - 0.62 * inch,
+                                   deed_name)
+            canvas.setStrokeColor(colors.HexColor("#999999"))
+            canvas.setLineWidth(0.4)
+            canvas.line(LEFT_MARGIN, height - 0.72 * inch,
+                        width - RIGHT_MARGIN, height - 0.72 * inch)
+        canvas.restoreState()
+
+    return _page_furniture
 
 
 def render_sale_deed_pdf(
     sections: Optional[List[Dict[str, Any]]] = None,
     fields: Optional[Dict[str, Any]] = None,
     first_page_top_offset: float = 0.0,
+    case_type: str = SALE_DEED,
 ) -> io.BytesIO:
     """Render the deed. ``sections`` is what the user actually saw and approved;
     when omitted the deed is rebuilt from ``fields``."""
     if sections is None:
-        sections = [dict(s) for s in build_sections(fields or {})]
+        sections = [dict(s) for s in build_sections(fields or {}, case_type=case_type)]
 
+    deed_name = _deed_name(sections, case_type)
+    _, subject = _DOCUMENT_META.get(case_type, _DOCUMENT_META[SALE_DEED])
     buffer = io.BytesIO()
     width, height = A4
     frame_width = width - LEFT_MARGIN - RIGHT_MARGIN
@@ -281,9 +317,9 @@ def render_sale_deed_pdf(
         rightMargin=RIGHT_MARGIN,
         topMargin=TOP_MARGIN,
         bottomMargin=BOTTOM_MARGIN,
-        title="Sale Deed",
+        title=deed_name.title(),
         author="Legal-TechAI",
-        subject="Deed of Absolute Sale",
+        subject=subject,
     )
 
     first_top = TOP_MARGIN + max(0.0, first_page_top_offset)
@@ -295,9 +331,10 @@ def render_sale_deed_pdf(
         LEFT_MARGIN, BOTTOM_MARGIN, frame_width,
         height - TOP_MARGIN - BOTTOM_MARGIN, id="later",
     )
+    furniture = _page_furniture_for(deed_name)
     doc.addPageTemplates([
-        PageTemplate(id="first", frames=[first_frame], onPage=_page_furniture),
-        PageTemplate(id="later", frames=[later_frame], onPage=_page_furniture),
+        PageTemplate(id="first", frames=[first_frame], onPage=furniture),
+        PageTemplate(id="later", frames=[later_frame], onPage=furniture),
     ])
 
     styles = _styles()

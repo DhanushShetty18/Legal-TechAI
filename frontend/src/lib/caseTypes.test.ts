@@ -4,12 +4,17 @@ import {
   DIVORCE_CASE,
   DERIVABLE_FIELDS,
   FIELD_GROUPS,
+  GIFT_DEED,
+  GIFT_DEED_CHECKLIST,
+  GIFT_DEED_FIELDS,
   SALE_DEED,
   SALE_DEED_CHECKLIST,
   SALE_DEED_FIELDS,
   allDocuments,
   checklistFor,
+  fieldGroupsFor,
   fieldLabel,
+  fieldsFor,
   isDraftable,
   missingRequiredFields,
 } from "./caseTypes";
@@ -19,14 +24,20 @@ const FULL_FIELDS: Record<string, string> = Object.fromEntries(
   SALE_DEED_FIELDS.map((field) => [field.key, `value for ${field.key}`]),
 );
 
+const FULL_GIFT_FIELDS: Record<string, string> = Object.fromEntries(
+  GIFT_DEED_FIELDS.map((field) => [field.key, `value for ${field.key}`]),
+);
+
 describe("case types", () => {
-  it("offers both the Sale Deed and the Divorce Case", () => {
+  it("offers the Sale Deed, the Gift Deed and the Divorce Case", () => {
     expect(checklistFor(SALE_DEED)).toBe(SALE_DEED_CHECKLIST);
+    expect(checklistFor(GIFT_DEED)).toBe(GIFT_DEED_CHECKLIST);
     expect(checklistFor(DIVORCE_CASE).length).toBeGreaterThan(0);
   });
 
-  it("only drafts a document for the Sale Deed", () => {
+  it("drafts a document for the two deed types but not the Divorce Case", () => {
     expect(isDraftable(SALE_DEED)).toBe(true);
+    expect(isDraftable(GIFT_DEED)).toBe(true);
     expect(isDraftable(DIVORCE_CASE)).toBe(false);
   });
 
@@ -134,11 +145,158 @@ describe("fieldLabel", () => {
     expect(fieldLabel("purchaser_name")).toBe("Purchaser - Full Name");
   });
 
+  it("qualifies the Gift Deed's two parties the same way", () => {
+    expect(fieldLabel("donor_name", GIFT_DEED)).toBe("Donor - Full Name");
+    expect(fieldLabel("donee_name", GIFT_DEED)).toBe("Donee - Full Name");
+  });
+
   it("leaves an unambiguous label alone", () => {
     expect(fieldLabel("boundary_east")).toBe("East");
+    expect(fieldLabel("society_name", GIFT_DEED)).toBe(
+      "Co-operative Housing Society",
+    );
   });
 
   it("falls back to the key for something it does not know", () => {
     expect(fieldLabel("mystery_field")).toBe("mystery_field");
+    // A Sale Deed key asked for under the Gift Deed is not that deed's field.
+    expect(fieldLabel("vendor_name", GIFT_DEED)).toBe("vendor_name");
+  });
+});
+
+describe("Gift Deed checklist", () => {
+  it("covers identity, title, society clearances, stamp duty and witnesses", () => {
+    expect(GIFT_DEED_CHECKLIST).toHaveLength(5);
+    const joined = GIFT_DEED_CHECKLIST.map((p) => p.phase).join(" ").toLowerCase();
+    for (const topic of [
+      "identity",
+      "relationship",
+      "title",
+      "society",
+      "stamp duty",
+      "witness",
+    ]) {
+      expect(joined).toContain(topic);
+    }
+  });
+
+  it("gives every document a unique id", () => {
+    const ids = allDocuments(GIFT_DEED).map((doc) => doc.id);
+    expect(new Set(ids).size).toBe(ids.length);
+  });
+
+  it("asks for the documents a gift of society shares cannot proceed without", () => {
+    const ids = allDocuments(GIFT_DEED)
+      .filter((doc) => doc.required)
+      .map((doc) => doc.id);
+    for (const id of [
+      "donor_id",
+      "donee_id",
+      "relationship_proof",
+      "parent_agreement",
+      "share_certificate",
+      "society_noc",
+      "stamp_duty_challan",
+      "witness_ids",
+    ]) {
+      expect(ids).toContain(id);
+    }
+  });
+
+  it("does not insist on documents that may not exist", () => {
+    const optional = allDocuments(GIFT_DEED)
+      .filter((doc) => !doc.required)
+      .map((doc) => doc.id);
+    expect(optional).toContain("heirs_noc");
+    expect(optional).toContain("occupancy_certificate");
+  });
+});
+
+describe("Gift Deed field set", () => {
+  it("gives every field a unique key", () => {
+    const keys = GIFT_DEED_FIELDS.map((field) => field.key);
+    expect(new Set(keys).size).toBe(keys.length);
+  });
+
+  it("groups the fields in the order the deed reads", () => {
+    const groups = fieldGroupsFor(GIFT_DEED);
+    expect(groups[0]).toBe("Execution");
+    expect(groups[1]).toBe("Donor");
+    expect(groups[2]).toBe("Donee");
+    expect(groups[groups.length - 1]).toBe("Witnesses");
+  });
+
+  it("assigns every field to one of its own groups", () => {
+    const groups = fieldGroupsFor(GIFT_DEED);
+    for (const field of GIFT_DEED_FIELDS) {
+      expect(groups).toContain(field.group);
+    }
+  });
+
+  it("covers the parties, the relationship, the shares and the flat", () => {
+    const keys = GIFT_DEED_FIELDS.map((field) => field.key);
+    for (const key of [
+      "donor_name",
+      "donor_pan",
+      "donor_aadhaar",
+      "donee_name",
+      "donee_relationship",
+      "gift_share_percentage",
+      "society_name",
+      "share_certificate_no",
+      "flat_number",
+      "carpet_area",
+      "witness_1_name",
+    ]) {
+      expect(keys).toContain(key);
+    }
+  });
+
+  it("asks for no consideration, because a gift has none", () => {
+    const keys = GIFT_DEED_FIELDS.map((field) => field.key);
+    expect(keys).not.toContain("sale_consideration_amount");
+    expect(keys).not.toContain("mode_of_payment");
+  });
+
+  it("tells the user the identifiers are printed whole", () => {
+    for (const key of ["donor_aadhaar", "donee_aadhaar"]) {
+      const field = GIFT_DEED_FIELDS.find((f) => f.key === key);
+      expect(field?.helpText).toContain("in full");
+    }
+  });
+
+  it("has no field set for a case type with no generator", () => {
+    expect(fieldsFor(DIVORCE_CASE)).toEqual([]);
+    expect(fieldsFor("Maritime Salvage")).toEqual([]);
+  });
+});
+
+describe("missingRequiredFields for the Gift Deed", () => {
+  it("is empty for a complete field set", () => {
+    expect(missingRequiredFields(FULL_GIFT_FIELDS, GIFT_DEED)).toEqual([]);
+  });
+
+  it("asks for the Gift Deed's particulars, not the Sale Deed's", () => {
+    const missing = missingRequiredFields({}, GIFT_DEED);
+    expect(missing).toContain("donor_name");
+    expect(missing).toContain("donee_relationship");
+    expect(missing).toContain("share_certificate_no");
+    expect(missing).not.toContain("vendor_name");
+    expect(missing).not.toContain("sale_consideration_amount");
+  });
+
+  it("never asks for a recital the generator writes itself", () => {
+    for (const key of missingRequiredFields({}, GIFT_DEED)) {
+      expect(DERIVABLE_FIELDS.has(key)).toBe(false);
+    }
+    expect(missingRequiredFields({}, GIFT_DEED)).not.toContain("gift_recital");
+  });
+
+  it("still defaults to the Sale Deed when no case type is given", () => {
+    expect(missingRequiredFields({})).toEqual(missingRequiredFields({}, SALE_DEED));
+  });
+
+  it("asks for nothing at all for a case type it cannot draft", () => {
+    expect(missingRequiredFields({}, DIVORCE_CASE)).toEqual([]);
   });
 });

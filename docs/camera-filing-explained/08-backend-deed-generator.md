@@ -102,7 +102,7 @@ def _party_block(fields, role, caption, part) -> str:
     nationality = str(fields.get(f"{role}_nationality") or "Indian").strip()
     address = _v(fields, f"{role}_address", 40)
     pan = _v(fields, f"{role}_pan", 12)
-    aadhaar = mask_aadhaar(fields.get(f"{role}_aadhaar")) or blank(12)
+    aadhaar = format_aadhaar(fields.get(f"{role}_aadhaar")) or blank(12)
 
     return (f"{name}, son / daughter / wife of {father}, aged about {age} years, "
             f"{marital} by marital status, by occupation {occupation}, "
@@ -115,7 +115,7 @@ def _party_block(fields, role, caption, part) -> str:
 introduction paragraph — this one function produces both the Vendor and
 Purchaser sections in `build_sections`, just called with different `role`,
 `caption`, and `part` arguments.
-**Calls:** `_v`, `mask_aadhaar` (from `formatting.py`).
+**Calls:** `_v`, `format_aadhaar` (from `formatting.py`).
 **Line by line:**
 - Every field is fetched with the shared `role` prefix (`f"{role}_name"`,
   so `"vendor_name"` or `"purchaser_name"` depending on which call this is)
@@ -128,13 +128,13 @@ Purchaser sections in `build_sections`, just called with different `role`,
   `"Indian"` specifically (not a blank line) when absent, since the vast
   majority of parties to a deed registered in India are Indian nationals,
   and a blank here would read oddly in an otherwise-complete sentence.
-- `aadhaar = mask_aadhaar(fields.get(f"{role}_aadhaar")) or blank(12)` —
-  **this is the second of the two places** (with `reconcile_identifiers` in
-  document 07) `mask_aadhaar` is applied — belt-and-suspenders: even if an
-  unmasked Aadhaar number somehow reached this function (it shouldn't, by
-  the time extraction has run), it would still never appear in the
-  rendered deed, because it's masked again right here at the point of
-  rendering. If there's no Aadhaar at all, `mask_aadhaar` returns `""` and
+- `aadhaar = format_aadhaar(fields.get(f"{role}_aadhaar")) or blank(12)` —
+  the number is recited **in full**, grouped in fours, because the deed is
+  what identifies the parties to the Sub-Registrar; see `DECISIONS.md`
+  decision A1, which reversed the earlier masking behaviour. Formatting is
+  applied again here rather than trusted from extraction so that a value the
+  user typed into the review form is presented the same way as one read off
+  a scan. If there's no Aadhaar at all, `format_aadhaar` returns `""` and
   `or blank(12)` supplies the fill-line instead.
 - The final f-string assembles the whole sentence using every value, with
   `caption` (`"VENDOR"` or `"PURCHASER"`) and `part` (`"ONE PART"` /

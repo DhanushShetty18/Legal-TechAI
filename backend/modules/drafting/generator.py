@@ -1,15 +1,19 @@
-"""Sale Deed generation.
+"""Deed generation.
 
-The deed is assembled from a deterministic skeleton that mirrors the model
-draft in ``Sale-Deed.pdf``: the same recital order, the same operative clauses,
-the same Schedule and the same attestation and thumb-impression pages.
+Each deed is assembled from a deterministic skeleton that mirrors a model
+draft - ``Sale-Deed.pdf`` for a conveyance on sale, ``GIFT DEED (50-50).pdf``
+for a gift - with the same recital order, the same operative clauses, the same
+Schedule and the same attestation and thumb-impression pages.
 
-Only the three genuinely bespoke passages - the title recital, the agreement
-recital and the Schedule's property description - are authored by the model.
-The operative clauses are template-locked, because a clause that drifts is a
-clause that has to be re-registered. When the model is unavailable or returns
-something unusable, the deterministic wording for those three passages is used
-and the deed is still complete and court-ready.
+Only the three genuinely bespoke passages per deed - the title recital, the
+transaction recital and the Schedule's property description - are authored by
+the model. The operative clauses are template-locked, because a clause that
+drifts is a clause that has to be re-registered. When the model is unavailable
+or returns something unusable, the deterministic wording for those passages is
+used and the deed is still complete and court-ready.
+
+The Sale Deed skeleton lives here; the Gift Deed skeleton lives in
+``gift_deed.py`` and reuses the helpers and styles defined below.
 """
 
 import logging
@@ -20,19 +24,30 @@ from ..gemini import extract_json, retry_on_failure
 from .formatting import (
     blank,
     deed_date_parts,
+    format_aadhaar,
     format_indian_currency,
     format_long_date,
-    mask_aadhaar,
     parse_amount,
     rupees_in_words,
 )
+from .schema import GIFT_DEED, SALE_DEED
 
 logger = logging.getLogger(__name__)
 
 MODEL_NAME = "gemini-2.5-flash"
 
-# Sections the model is allowed to author.
+# Sections the model is allowed to author, per case type.
 NARRATIVE_SECTIONS = ("title_recital", "agreement_recital", "schedule_body")
+GIFT_NARRATIVE_SECTIONS = ("title_recital", "gift_recital", "schedule_body")
+
+NARRATIVE_SECTIONS_BY_CASE_TYPE: Dict[str, tuple] = {
+    SALE_DEED: NARRATIVE_SECTIONS,
+    GIFT_DEED: GIFT_NARRATIVE_SECTIONS,
+}
+
+
+def narrative_sections_for(case_type: str = SALE_DEED) -> tuple:
+    return NARRATIVE_SECTIONS_BY_CASE_TYPE.get(case_type, NARRATIVE_SECTIONS)
 
 # Roughly how many rendered words fit on a printed page of the deed, used to
 # report progress to the UI. Signature pages are counted separately.
@@ -69,7 +84,7 @@ def _party_block(fields: Dict[str, Any], role: str, caption: str, part: str) -> 
     nationality = str(fields.get(f"{role}_nationality") or "Indian").strip()
     address = _v(fields, f"{role}_address", 40)
     pan = _v(fields, f"{role}_pan", 12)
-    aadhaar = mask_aadhaar(fields.get(f"{role}_aadhaar")) or blank(12)
+    aadhaar = format_aadhaar(fields.get(f"{role}_aadhaar")) or blank(12)
 
     return (
         f"{name}, son / daughter / wife of {father}, aged about {age} years, "
@@ -298,9 +313,17 @@ def _operative_clauses(fields: Dict[str, Any]) -> List[str]:
 # Skeleton
 # --------------------------------------------------------------------------
 def build_sections(fields: Dict[str, Any],
-                   narrative: Optional[Dict[str, str]] = None) -> List[Section]:
+                   narrative: Optional[Dict[str, str]] = None,
+                   case_type: str = SALE_DEED) -> List[Section]:
     """The complete deed, in reading order. ``narrative`` overrides the
     model-authored passages; anything missing falls back to the template."""
+    if case_type == GIFT_DEED:
+        # Imported here rather than at module scope: gift_deed.py depends on the
+        # helpers defined above, so a top-level import would be circular.
+        from .gift_deed import build_gift_deed_sections
+
+        return build_gift_deed_sections(fields, narrative)
+
     narrative = narrative or {}
     place = _v(fields, "place_of_execution", 18)
     day, month, year = deed_date_parts(fields.get("date_of_execution"))

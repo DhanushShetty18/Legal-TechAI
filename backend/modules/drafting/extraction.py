@@ -14,8 +14,14 @@ from typing import Any, Dict, Iterable, List, Optional
 
 from ..gemini import extract_json, retry_on_failure
 from .checklists import document_by_id
-from .formatting import mask_aadhaar, normalise_pan, parse_amount
-from .schema import DERIVABLE_FIELDS, SALE_DEED, SALE_DEED_FIELD_KEYS, SALE_DEED_FIELDS
+from .formatting import format_aadhaar, normalise_pan, parse_amount
+from .schema import (
+    DERIVABLE_FIELDS,
+    GIFT_DEED,
+    SALE_DEED,
+    field_keys_for,
+    fields_for,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -45,8 +51,25 @@ _AADHAAR_RE = re.compile(r"\b(\d{4}\s?\d{4}\s?\d{4})\b")
 _PINCODE_RE = re.compile(r"\b(\d{6})\b")
 
 
-def _field_labels(keys: Iterable[str]) -> str:
-    by_key = {f.key: f for f in SALE_DEED_FIELDS}
+# The pair of roles a deed of each kind is between. The identifier rescue below
+# walks these so a donor's PAN is never attributed to the donee.
+PARTY_ROLES: Dict[str, tuple] = {
+    SALE_DEED: ("vendor", "purchaser"),
+    GIFT_DEED: ("donor", "donee"),
+}
+
+# Amount fields that must be stored as plain numbers so the generator can spell
+# them out in words.
+_AMOUNT_KEYS: Dict[str, tuple] = {
+    SALE_DEED: ("sale_consideration_amount", "market_value", "stamp_duty_paid",
+                "registration_fee"),
+    GIFT_DEED: ("market_value", "stamp_duty_paid", "registration_fee",
+                "share_face_value"),
+}
+
+
+def _field_labels(keys: Iterable[str], case_type: str = SALE_DEED) -> str:
+    by_key = {f.key: f for f in fields_for(case_type)}
     lines = []
     for key in keys:
         field = by_key.get(key)
@@ -57,14 +80,15 @@ def _field_labels(keys: Iterable[str]) -> str:
     return "\n".join(lines)
 
 
-def build_prompt(doc_label: str, target_keys: List[str]) -> str:
+def build_prompt(doc_label: str, target_keys: List[str],
+                 case_type: str = SALE_DEED) -> str:
     """The per-document instruction. Scoping the schema sharply raises recall."""
     return (
         f"This document was supplied as: {doc_label}\n\n"
         "Extract the following fields from it. Use null for anything not "
         "legibly present in this particular document.\n\n"
         "{\n"
-        f"{_field_labels(target_keys)}\n"
+        f"{_field_labels(target_keys, case_type)}\n"
         '  "raw_text": null  - the complete text you read, verbatim\n'
         "}\n\n"
         "Return the JSON object only."
@@ -107,6 +131,7 @@ def reconcile_identifiers(
     fields: Dict[str, Any],
     raw_text: str,
     allowed_keys: Optional[Iterable[str]] = None,
+    case_type: str = SALE_DEED,
 ) -> Dict[str, Any]:
     """Re-derive PAN / Aadhaar / pincode from the transcribed text.
 
@@ -127,7 +152,7 @@ def reconcile_identifiers(
     aadhaars = [a for a in _AADHAAR_RE.findall(raw_text or "")
                 if len(re.sub(r"\D", "", a)) == 12]
 
-    for role in ("vendor", "purchaser"):
+    for role in PARTY_ROLES.get(case_type, PARTY_ROLES[SALE_DEED]):
         pan_key = f"{role}_pan"
         aadhaar_key = f"{role}_aadhaar"
         if in_scope is not None and not {pan_key, aadhaar_key} & in_scope:
@@ -148,7 +173,7 @@ def reconcile_identifiers(
         if not source and len(aadhaars) == 1:
             source = aadhaars[0]
         if source:
-            result[aadhaar_key] = mask_aadhaar(source)
+            result[aadhaar_key] = format_aadhaar(source)
 
     return result
 
@@ -161,21 +186,26 @@ def extract_from_document(
     case_type: str = SALE_DEED,
 ) -> Dict[str, Any]:
     """Extract one uploaded document. Never raises; failures come back as an error field."""
+    all_keys = field_keys_for(case_type)
     spec = document_by_id(case_type, doc_id)
-    target_keys = spec.get("extracts") or SALE_DEED_FIELD_KEYS
+    target_keys = spec.get("extracts") or all_keys
     label = doc_label or spec.get("label") or doc_id
 
     try:
-        raw = _call_gemini(build_prompt(label, list(target_keys)), image_blob, mime_type)
+        raw = _call_gemini(
+            build_prompt(label, list(target_keys), case_type), image_blob, mime_type
+        )
     except Exception as exc:  # noqa: BLE001 - one bad scan must not sink the filing
         logger.warning("Extraction failed for %s: %s", doc_id, exc)
         return {"docId": doc_id, "label": label, "fields": {}, "rawText": "",
                 "error": str(exc)}
 
     raw_text = _clean(raw.pop("raw_text", None)) or ""
-    fields = {k: _clean(v) for k, v in raw.items() if k in SALE_DEED_FIELD_KEYS}
+    fields = {k: _clean(v) for k, v in raw.items() if k in all_keys}
     fields = {k: v for k, v in fields.items() if v is not None}
-    fields = reconcile_identifiers(fields, raw_text, allowed_keys=target_keys)
+    fields = reconcile_identifiers(
+        fields, raw_text, allowed_keys=target_keys, case_type=case_type
+    )
     fields = {k: v for k, v in fields.items() if _clean(v) is not None}
 
     logger.info("Extracted %d field(s) from %s", len(fields), doc_id)
@@ -210,8 +240,7 @@ def merge_extractions(results: List[Dict[str, Any]],
                 authoritative[key] = is_authoritative
 
     # Amounts are stored as plain numbers so the generator can spell them out.
-    for key in ("sale_consideration_amount", "market_value", "stamp_duty_paid",
-                "registration_fee"):
+    for key in _AMOUNT_KEYS.get(case_type, _AMOUNT_KEYS[SALE_DEED]):
         amount = parse_amount(merged.get(key))
         if amount is not None:
             merged[key] = str(int(amount)) if amount.is_integer() else str(amount)
@@ -219,7 +248,8 @@ def merge_extractions(results: List[Dict[str, Any]],
     return {"fields": merged, "provenance": provenance}
 
 
-def missing_required_fields(fields: Dict[str, Any]) -> List[str]:
+def missing_required_fields(fields: Dict[str, Any],
+                            case_type: str = SALE_DEED) -> List[str]:
     """Required fields the user still has to supply.
 
     Fields the generator can derive on its own are excluded - the flow asks
@@ -227,18 +257,20 @@ def missing_required_fields(fields: Dict[str, Any]) -> List[str]:
     """
     return [
         f.key
-        for f in SALE_DEED_FIELDS
+        for f in fields_for(case_type)
         if f.required and f.key not in DERIVABLE_FIELDS
         and _clean(fields.get(f.key)) is None
     ]
 
 
-def extraction_summary(fields: Dict[str, Any]) -> Dict[str, Any]:
-    filled = [k for k in SALE_DEED_FIELD_KEYS if _clean(fields.get(k)) is not None]
-    missing = missing_required_fields(fields)
+def extraction_summary(fields: Dict[str, Any],
+                       case_type: str = SALE_DEED) -> Dict[str, Any]:
+    all_keys = field_keys_for(case_type)
+    filled = [k for k in all_keys if _clean(fields.get(k)) is not None]
+    missing = missing_required_fields(fields, case_type)
     return {
         "fieldsFilled": len(filled),
-        "fieldsTotal": len(SALE_DEED_FIELD_KEYS),
+        "fieldsTotal": len(all_keys),
         "missingRequired": missing,
         "readyToGenerate": not missing,
     }
