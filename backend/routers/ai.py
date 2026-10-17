@@ -10,6 +10,10 @@ from modules.ai.gemini_integration import (
 )
 from fastapi.responses import JSONResponse
 
+# Gemini's client is synchronous: each call blocks for seconds. These
+# endpoints are plain `def` so FastAPI runs them in a worker thread. As
+# `async def` they ran on the event loop and froze every other request
+# (including /health) until Gemini answered.
 router = APIRouter(
     prefix="/ai",
     tags=["ai-integration"],
@@ -27,7 +31,7 @@ class AnswerQuestionRequest(BaseModel):
     context: str
 
 @router.post("/summarize")
-async def api_summarize_legal_document(request: SummarizeRequest):
+def api_summarize_legal_document(request: SummarizeRequest):
     """
     Summarize a legal document under BNS, BNSS, and BSA.
     """
@@ -40,7 +44,7 @@ async def api_summarize_legal_document(request: SummarizeRequest):
         raise HTTPException(status_code=500, detail=f"AI Summarization failed: {str(e)}")
 
 @router.post("/extract-claims")
-async def api_extract_claims(request: ExtractClaimsRequest):
+def api_extract_claims(request: ExtractClaimsRequest):
     """
     Break document into atomic factual claims.
     """
@@ -53,7 +57,7 @@ async def api_extract_claims(request: ExtractClaimsRequest):
         raise HTTPException(status_code=500, detail=f"Claim extraction failed: {str(e)}")
 
 @router.post("/answer-question")
-async def api_answer_legal_question(request: AnswerQuestionRequest):
+def api_answer_legal_question(request: AnswerQuestionRequest):
     """
     Answer a legal question strictly based on the provided context.
     """

@@ -34,8 +34,15 @@ export default function LiveDeedCanvas({
   // resumes when they scroll back to the bottom.
   const [following, setFollowing] = useState(true);
 
+  // `sections` changes on every animation frame (~60 times a second). Starting a
+  // smooth scroll on each one queues dozens of competing scroll animations and
+  // makes the page judder on phones. Four scrolls a second looks identical.
+  const lastScrollRef = useRef(0);
   useEffect(() => {
     if (!following || !isWriting) return;
+    const now = performance.now();
+    if (now - lastScrollRef.current < 250) return;
+    lastScrollRef.current = now;
     endRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
   }, [sections, following, isWriting]);
 

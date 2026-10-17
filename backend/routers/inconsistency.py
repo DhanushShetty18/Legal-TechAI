@@ -1,6 +1,7 @@
 from fastapi import APIRouter, File, UploadFile, HTTPException, Query
 from typing import Dict, List
 import fitz  # PyMuPDF
+from fastapi.concurrency import run_in_threadpool
 from modules.inconsistency.core import InconsistencyEngine
 from modules.inconsistency.schemas import FinalContradiction, InconsistencyReportWithRanking
 
@@ -117,7 +118,8 @@ async def detect_inconsistencies(
         documents_data.append({"doc_id": filename, "text": extracted_text})
 
     try:
-        report = engine.process(documents_data)
+        # A multi-step Gemini pipeline: tens of seconds of blocking I/O.
+        report = await run_in_threadpool(engine.process, documents_data)
 
         # Collapse duplicate contradictions citing the same quote pair
         # (e.g. the same Mumbai/Pune clash reported repeatedly under

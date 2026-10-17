@@ -40,7 +40,7 @@ class Case(Base):
     case_type = Column(String, default="CIVIL")
     status = Column(String, default="OPEN") # OPEN, CLOSED, PENDING
     priority = Column(String, default="NORMAL")
-    creator_id = Column(Integer, ForeignKey("users.id"))
+    creator_id = Column(Integer, ForeignKey("users.id"), index=True)
     created_at = Column(DateTime, default=datetime.utcnow)
 
     creator = relationship("User", back_populates="cases")
@@ -50,8 +50,8 @@ class Document(Base):
     __tablename__ = "documents"
 
     id = Column(Integer, primary_key=True, index=True)
-    case_id = Column(Integer, ForeignKey("cases.id"))
-    uploader_id = Column(Integer, ForeignKey("users.id"))
+    case_id = Column(Integer, ForeignKey("cases.id"), index=True)
+    uploader_id = Column(Integer, ForeignKey("users.id"), index=True)
     
     file_path = Column(String) # Path to storage
     file_hash = Column(String, index=True) # SHA-256 for immutability check
