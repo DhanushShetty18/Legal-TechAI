@@ -1,7 +1,8 @@
 from sqlalchemy.orm import Session
 import models, schemas
-import hashlib
 import uuid
+
+from security import SELF_SERVICE_ROLES, hash_password
 
 def get_user(db: Session, user_id: int):
     return db.query(models.User).filter(models.User.id == user_id).first()
@@ -10,12 +11,14 @@ def get_user_by_email(db: Session, email: str):
     return db.query(models.User).filter(models.User.email == email).first()
 
 def create_user(db: Session, user: schemas.UserCreate):
-    fake_hashed_password = user.password + "notreallyhashed"
+    # Self-registration may only create citizen or lawyer accounts; privileged
+    # roles (judge, clerk, admin) are assigned by an administrator.
+    role = user.role if user.role in SELF_SERVICE_ROLES else "citizen"
     db_user = models.User(
         email=user.email,
         full_name=user.full_name,
-        hashed_password=fake_hashed_password,
-        role=user.role
+        hashed_password=hash_password(user.password),
+        role=role
     )
     db.add(db_user)
     db.commit()
