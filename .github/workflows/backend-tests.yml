@@ -20,4 +20,4 @@ jobs:
           cache-dependency-path: backend/requirements.txt
       - run: pip install -r requirements.txt pytest
       # The focused suites below run without network access or API keys.
-      - run: python -m pytest -q $(ls test_security.py test_retry.py test_drafting.py 2>/dev/null)
+      - run: python -m pytest -q $(ls test_security.py test_retry.py test_concurrency.py test_drafting.py 2>/dev/null)
