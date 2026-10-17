@@ -18,6 +18,11 @@ collection = chroma_client.get_or_create_collection(
     metadata={"hnsw:space": "cosine"}
 )
 
+# Section numbers currently in the collection, kept in step with add_legal_section.
+# query_rag_system used to re-read every section's metadata on every question
+# just to build this list - O(number of sections) work per query.
+_known_section_numbers: set = set()
+
 SYSTEM_PROMPT = (
     "Answer using ONLY the sections provided below. "
     "Cite the exact section number for every claim. "
@@ -45,6 +50,7 @@ def add_legal_section(section: SectionInput):
         }],
         ids=[f"{section.act_name}_{section.section_number}"]
     )
+    _known_section_numbers.add(section.section_number)
     return {"status": "success", "section_number": section.section_number}
 
 def query_rag_system(question: str) -> QueryResponse:
@@ -86,12 +92,9 @@ def query_rag_system(question: str) -> QueryResponse:
     citation_matches = re.findall(r"(?i)section\s+([0-9]+[A-Za-z]*)", answer)
     citations = list(set(citation_matches))
     
-    all_sections = collection.get(include=["metadatas"])
-    existing_section_numbers = [m["section_number"] for m in all_sections["metadatas"]] if all_sections["metadatas"] else []
-    
     hallucination_flags = []
     for cit in citations:
-        if cit not in existing_section_numbers:
+        if cit not in _known_section_numbers:
             hallucination_flags.append(f"Section {cit}")
             
     return QueryResponse(

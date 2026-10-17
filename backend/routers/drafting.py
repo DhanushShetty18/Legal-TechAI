@@ -15,6 +15,7 @@ import logging
 from typing import Any, Dict, List, Optional
 
 from fastapi import APIRouter, File, Form, HTTPException, UploadFile
+from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
@@ -179,8 +180,11 @@ async def extract_documents(
             )
 
         doc_id = ids[index] if index < len(ids) and ids[index] else default_doc_id
+        # extract_from_document makes a blocking Gemini call (with retries).
+        # Running it in a thread keeps the server responsive meanwhile.
         results.append(
-            extract_from_document(
+            await run_in_threadpool(
+                extract_from_document,
                 contents,
                 mime_type=content_type or "image/jpeg",
                 doc_id=doc_id,
