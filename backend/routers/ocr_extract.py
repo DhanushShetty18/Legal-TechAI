@@ -1,4 +1,5 @@
 from fastapi import APIRouter, UploadFile, File, HTTPException
+from fastapi.concurrency import run_in_threadpool
 from pydantic import BaseModel
 from typing import Optional
 import logging
@@ -34,7 +35,10 @@ async def extract_ocr_data(file: UploadFile = File(...)):
         raise HTTPException(status_code=413, detail="File exceeds the 12 MB limit.")
 
     try:
-        extracted_data = extract_document_data(contents, mime_type=content_type)
+        # Blocking Gemini call: run it off the event loop.
+        extracted_data = await run_in_threadpool(
+            extract_document_data, contents, mime_type=content_type
+        )
         return extracted_data
     except Exception:
         logger.exception("OCR extraction failed")
