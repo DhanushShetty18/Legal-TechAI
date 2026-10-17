@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 
-import { api } from "./api";
+import { COLD_START_TIMEOUT_MS, api } from "./api";
 import { SALE_DEED } from "./caseTypes";
 import {
   DeedEvent,
@@ -72,6 +72,9 @@ export function useDeedGeneration() {
   const streamDoneRef = useRef(false);
   const donePayloadRef = useRef<GenerationResult | null>(null);
   const abortRef = useRef<AbortController | null>(null);
+  // Set when the server reports an error. Once failed, nothing may flip the
+  // phase back to "complete" - otherwise a failed deed becomes downloadable.
+  const failedRef = useRef(false);
 
   const stopAnimation = useCallback(() => {
     if (frameRef.current !== null) {
@@ -91,6 +94,7 @@ export function useDeedGeneration() {
     sectionsRef.current = [];
     streamDoneRef.current = false;
     donePayloadRef.current = null;
+    failedRef.current = false;
     setState(INITIAL);
   }, [cancel]);
 
@@ -109,6 +113,11 @@ export function useDeedGeneration() {
           Math.round((charsPerTick(backlog) * elapsed) / FRAME_MS),
         );
         sectionsRef.current = tick(sectionsRef.current, budget);
+      }
+
+      if (failedRef.current) {
+        stopAnimation();
+        return;
       }
 
       const caughtUp = isCaughtUp(sectionsRef.current);
@@ -170,6 +179,9 @@ export function useDeedGeneration() {
         }));
         break;
       case "error":
+        failedRef.current = true;
+        stopAnimation();
+        abortRef.current?.abort();
         setState((current) => ({
           ...current,
           phase: "error",
@@ -189,7 +201,7 @@ export function useDeedGeneration() {
       default:
         sectionsRef.current = applyEvent(sectionsRef.current, event);
     }
-  }, []);
+  }, [stopAnimation]);
 
   const start = useCallback(
     async (fields: Record<string, string>, caseType: string = SALE_DEED) => {
@@ -197,6 +209,7 @@ export function useDeedGeneration() {
       sectionsRef.current = [];
       streamDoneRef.current = false;
       donePayloadRef.current = null;
+      failedRef.current = false;
       setState({
         ...INITIAL,
         phase: "connecting",
@@ -205,6 +218,13 @@ export function useDeedGeneration() {
 
       const controller = new AbortController();
       abortRef.current = controller;
+      // Only the *connection* times out. Once headers arrive the stream may
+      // legitimately run for minutes, so the timer is cleared then.
+      let timedOut = false;
+      const connectTimer = setTimeout(() => {
+        timedOut = true;
+        controller.abort();
+      }, COLD_START_TIMEOUT_MS);
 
       try {
         const response = await fetch(api("/drafting/generate"), {
@@ -216,6 +236,7 @@ export function useDeedGeneration() {
           body: JSON.stringify({ fields, caseType }),
           signal: controller.signal,
         });
+        clearTimeout(connectTimer);
 
         if (!response.ok || !response.body) {
           throw new Error(
@@ -238,14 +259,25 @@ export function useDeedGeneration() {
           }
         }
         for (const event of decoder.flush()) handleEvent(event);
+        if (failedRef.current) return;
 
         // The stream can close without a done frame if the connection drops
         // mid-deed. Whatever arrived is still a usable draft.
         streamDoneRef.current = true;
         startAnimation();
       } catch (caught) {
-        if (controller.signal.aborted) return;
+        clearTimeout(connectTimer);
+        // Aborted by cancel() or by an error event: state is already correct.
+        if (controller.signal.aborted && !timedOut) return;
         stopAnimation();
+        if (timedOut) {
+          setState((current) => ({
+            ...current,
+            phase: "error",
+            error: "The drafting engine did not respond. Please try again.",
+          }));
+          return;
+        }
         setState((current) => ({
           ...current,
           phase: "error",

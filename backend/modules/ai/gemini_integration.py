@@ -44,9 +44,11 @@ def retry_on_failure(retries=3, delay=2):
                     last_exception = e
                     if attempt < retries:
                         # Exponential backoff: 2, 4, 8 seconds + random jitter
-                        delay = delay * (2 ** attempt) + random.uniform(0, 1)
-                        logger.warning(f"Rate limit or service unavailable hit for {func.__name__} (attempt {attempt + 1}). Retrying in {delay:.2f}s...")
-                        time.sleep(delay)
+                        # A new name: assigning to `delay` here would make it a
+                        # local variable and crash with UnboundLocalError.
+                        wait = delay * (2 ** attempt) + random.uniform(0, 1)
+                        logger.warning(f"Rate limit or service unavailable hit for {func.__name__} (attempt {attempt + 1}). Retrying in {wait:.2f}s...")
+                        time.sleep(wait)
                     else:
                         logger.error(f"All {retries} retries exhausted for {func.__name__} due to capacity constraints.")
                         # Fail gracefully with a specific error message expected by the frontend
@@ -54,9 +56,9 @@ def retry_on_failure(retries=3, delay=2):
                 except Exception as e:
                     last_exception = e
                     if attempt < retries:
-                        delay = delay * (2 ** attempt) + random.uniform(0, 1)
-                        logger.warning(f"Attempt {attempt + 1} failed for {func.__name__}: {str(e)}. Retrying in {delay:.2f}s...")
-                        time.sleep(delay)
+                        wait = delay * (2 ** attempt) + random.uniform(0, 1)
+                        logger.warning(f"Attempt {attempt + 1} failed for {func.__name__}: {str(e)}. Retrying in {wait:.2f}s...")
+                        time.sleep(wait)
                     else:
                         logger.error(f"All {retries} attempts failed for {func.__name__}")
                         raise
