@@ -79,7 +79,9 @@ export async function downloadFile(
   document.body.appendChild(anchor);
   anchor.click();
   anchor.remove();
-  URL.revokeObjectURL(url);
+  // click() only schedules the download. Revoking now can hand the browser an
+  // empty file (seen on Android). Free the blob once the download has begun.
+  setTimeout(() => URL.revokeObjectURL(url), 60_000);
 }
 
 async function describeFailure(response: Response): Promise<string> {

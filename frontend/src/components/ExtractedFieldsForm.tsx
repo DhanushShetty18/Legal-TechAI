@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { AlertCircle, CheckCircle2, ChevronDown, Sparkles } from "lucide-react";
 
 import {
@@ -11,6 +11,7 @@ import {
   fieldsFor,
   missingRequiredFields,
 } from "@/lib/caseTypes";
+import { toAmountInputValue, toDateInputValue } from "@/lib/filingHelpers";
 
 interface ExtractedFieldsFormProps {
   fields: DeedFields;
@@ -39,6 +40,18 @@ export default function ExtractedFieldsForm({
     [fields, caseType],
   );
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
+  // Which groups start open is decided once, on first render. Deriving it live
+  // from missingCount made a group snap shut the moment its last gap was
+  // filled - while the user was still typing in it.
+  const initiallyOpen = useRef<Record<string, boolean> | null>(null);
+  if (initiallyOpen.current === null) {
+    initiallyOpen.current = Object.fromEntries(
+      fieldGroupsFor(caseType).map((group) => [
+        group,
+        fieldsFor(caseType).some((f) => f.group === group && missing.has(f.key)),
+      ]),
+    );
+  }
 
   const groups = useMemo(
     () =>
@@ -60,7 +73,7 @@ export default function ExtractedFieldsForm({
     <div className="space-y-4">
       {groups.map(({ group, fields: groupFields, missingCount, filledCount }) => {
         // Groups with gaps are open by default; complete ones collapse away.
-        const isOpen = expanded[group] ?? missingCount > 0;
+        const isOpen = expanded[group] ?? initiallyOpen.current?.[group] ?? missingCount > 0;
         return (
           <section
             key={group}
@@ -180,12 +193,28 @@ function FieldInput({
         <input
           id={field.key}
           type={field.kind === "date" ? "date" : field.kind === "number" ? "number" : "text"}
-          value={value}
+          // Date and number inputs silently show blank for any value they can't
+          // parse ("30-09-2026", "45,00,000"). Normalise before handing it over.
+          value={
+            field.kind === "date"
+              ? toDateInputValue(value)
+              : field.kind === "number"
+                ? toAmountInputValue(value)
+                : value
+          }
           placeholder={field.placeholder}
           onChange={(event) => onChange(field.key, event.target.value)}
           className={shared}
         />
       )}
+
+      {value &&
+        ((field.kind === "date" && !toDateInputValue(value)) ||
+          (field.kind === "number" && !toAmountInputValue(value))) && (
+          <p className="text-[11px] leading-snug text-amber-400">
+            Read as &ldquo;{value}&rdquo; &mdash; please re-enter it above.
+          </p>
+        )}
 
       {field.helpText && (
         <p className="text-[11px] leading-snug text-slate-500">{field.helpText}</p>

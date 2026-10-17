@@ -34,6 +34,11 @@ import {
   missingRequiredFields,
 } from "@/lib/caseTypes";
 import { DeedSection } from "@/lib/deedStream";
+import {
+  canCapture,
+  documentStateAfterExtraction,
+  downloadStem,
+} from "@/lib/filingHelpers";
 import { useDeedGeneration } from "@/lib/useDeedGeneration";
 
 type FlowState =
@@ -155,12 +160,21 @@ export default function FileCasePage() {
     const context = canvas?.getContext("2d");
     if (!video || !canvas || !context) return;
 
+    const check = canCapture(video);
+    if (!check.ok) {
+      setError(check.message);
+      return;
+    }
+
     canvas.width = video.videoWidth;
     canvas.height = video.videoHeight;
     context.drawImage(video, 0, 0, canvas.width, canvas.height);
     canvas.toBlob(
       (blob) => {
-        if (!blob) return;
+        if (!blob) {
+          setError("The photo could not be saved. Try again, or upload the file instead.");
+          return;
+        }
         stopCamera();
         void extractFromImage(blob, "image/jpeg", "capture.jpg");
       },
@@ -205,7 +219,7 @@ export default function FileCasePage() {
 
     setDocumentStates((current) => ({
       ...current,
-      [docId]: { status: "Uploaded", fields: extracted, error: docError },
+      [docId]: documentStateAfterExtraction(current[docId], extracted, docError),
     }));
     setActiveDocument(null);
     setShowFileUpload(false);
@@ -292,12 +306,12 @@ export default function FileCasePage() {
   const download = async (format: "pdf" | "docx") => {
     setIsBusy(true);
     setError(null);
-    const stem = (
-      caseTitle.trim() ||
-      `${selectedCaseType.replace(/\s+/g, "-")}-${principalParty ?? "Draft"}`
-    )
-      .replace(/[^\w\s-]/g, "")
-      .trim();
+    // `\w` in JS only matches A-Z/0-9, which used to erase Marathi or Hindi
+    // titles completely and download a file literally named ".pdf".
+    const stem = downloadStem(
+      caseTitle,
+      `${selectedCaseType} ${principalParty ?? "Draft"}`,
+    );
     try {
       await downloadFile(
         `/drafting/export/${format}`,
@@ -620,6 +634,12 @@ export default function FileCasePage() {
                 <div className="absolute left-0 right-0 top-4 text-center text-sm font-medium text-white/80 drop-shadow-md">
                   Align the document within the frame
                 </div>
+                {error && (
+                  <div className="absolute left-4 right-4 top-12 z-10 flex items-center gap-2 rounded-lg border border-amber-500/30 bg-black/70 p-3 text-sm text-amber-200">
+                    <AlertCircle className="h-4 w-4 shrink-0" />
+                    <span>{error}</span>
+                  </div>
+                )}
                 <div className="absolute bottom-8 left-0 right-0 z-10 flex flex-col items-center gap-3">
                   <button
                     onClick={handleCapture}

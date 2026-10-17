@@ -46,7 +46,8 @@ export class SSEDecoder {
   private buffer = "";
 
   push(chunk: string): DeedEvent[] {
-    this.buffer += chunk;
+    // Some proxies send "\r\n\r\n" between frames; normalise so we can split.
+    this.buffer += chunk.replace(/\r\n/g, "\n");
     const events: DeedEvent[] = [];
 
     // Events are separated by a blank line. Anything after the last separator
