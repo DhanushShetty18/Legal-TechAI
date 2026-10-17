@@ -20,4 +20,14 @@ jobs:
           cache-dependency-path: backend/requirements.txt
       - run: pip install -r requirements.txt pytest
       # The focused suites below run without network access or API keys.
-      - run: python -m pytest -q $(ls test_security.py test_retry.py test_concurrency.py test_drafting.py 2>/dev/null)
+      # Failures are re-printed as annotations so they show on the PR page.
+      - name: pytest
+        run: |
+          set +e
+          python -m pytest -q -rfE $(ls test_security.py test_retry.py test_concurrency.py test_drafting.py 2>/dev/null) > pytest.out 2>&1
+          status=$?
+          cat pytest.out
+          grep -E "^(FAILED|ERROR)" pytest.out | head -50 | sed 's/^/::error::/'
+          grep -E "^E   " pytest.out | head -30 | sed 's/^/::error::/'
+          tail -3 pytest.out | sed 's/^/::notice::/'
+          exit $status
