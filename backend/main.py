@@ -33,13 +33,17 @@ app = FastAPI(
 
 from routers import demo, ai, rag, inconsistency, ingest, summarizer, ocr_extract, drafting
 import ingestion
+from security import MAX_UPLOAD_BYTES, allowed_origins, demo_routes_enabled, safe_upload_path
 
 # ==========================================
 # ROUTER INCLUSION (MODULARITY)
 # ==========================================
 # By using APIRouter, we can split our application across multiple files.
 # This keeps main.py clean and organizes related endpoints together.
-app.include_router(demo.router)
+# The demo router simulates identity checks and can flip the process "offline".
+# It is useful in a pitch, and must never be reachable on a public deployment.
+if demo_routes_enabled():
+    app.include_router(demo.router)
 app.include_router(ai.router)
 app.include_router(ingestion.router)
 app.include_router(rag.router)
@@ -56,10 +60,12 @@ app.include_router(drafting.router, prefix="/drafting")
 # to securely communicate with this backend API without browser security blocks.
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"], # In production, restrict this to specific domain URLs!
+    # Only the origins listed in ALLOWED_ORIGINS may call this API from a browser.
+    # "*" together with credentials would let any website act as the user.
+    allow_origins=allowed_origins(),
     allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_methods=["GET", "POST", "OPTIONS"],
+    allow_headers=["Content-Type", "Authorization", "X-Admin-Key"],
 )
 
 logging.basicConfig(level=logging.INFO)
@@ -78,9 +84,11 @@ async def global_exception_handler(request: Request, exc: Exception):
     # Don't swallow HTTPException — let FastAPI handle it natively
     if isinstance(exc, HTTPException):
         raise exc
+    # Log the real error for us; send the caller nothing about our internals.
+    logger.exception("Unhandled error on %s %s", request.method, request.url.path)
     return JSONResponse(
         status_code=500,
-        content={"success": False, "data": None, "error": str(exc)}
+        content={"success": False, "data": None, "error": "Internal server error."}
     )
 
 @app.get("/")
@@ -151,6 +159,9 @@ def create_case(case: schemas.CaseCreate, user_id: int, db: Session = Depends(ge
 
 @app.get("/cases/", response_model=List[schemas.Case])
 def read_cases(skip: int = 0, limit: int = 100, db: Session = Depends(get_db)):
+    # Cap the page size so one request cannot pull the whole table into memory.
+    limit = max(1, min(limit, 100))
+    skip = max(0, skip)
     cases = crud.get_cases(db, skip=skip, limit=limit)
     return cases
 
@@ -163,21 +174,22 @@ def upload_document(
     file: UploadFile = File(...),
     db: Session = Depends(get_db)
 ):
-    # Create upload directory if it doesn't exist
-    upload_dir = "uploads"
-    if not os.path.exists(upload_dir):
-        os.makedirs(upload_dir)
-    
-    file_location = f"{upload_dir}/{file.filename}"
-    
-    # Calculate hash while saving
+    # Never build a path from the client's filename: a name like "../main.py"
+    # would write outside the uploads folder. We generate our own name and
+    # keep only a short, known-safe extension.
+    content = file.file.read(MAX_UPLOAD_BYTES + 1)
+    if len(content) > MAX_UPLOAD_BYTES:
+        raise HTTPException(status_code=413, detail="File exceeds the 12 MB limit.")
+    if not content:
+        raise HTTPException(status_code=400, detail="File is empty.")
+
+    file_location = safe_upload_path("uploads", file.filename)
+
     sha256_hash = hashlib.sha256()
-    
+    sha256_hash.update(content)
     with open(file_location, "wb") as buffer:
-        content = file.file.read()
-        sha256_hash.update(content)
         buffer.write(content)
-        
+
     file_hash = sha256_hash.hexdigest()
     
     doc_create = schemas.DocumentCreate(

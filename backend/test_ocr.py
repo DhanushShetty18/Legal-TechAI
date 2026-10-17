@@ -1,8 +1,7 @@
 import os
 import sys
 
-# Set key
-os.environ["GEMINI_API_KEY"] = "os.getenv("GEMINI_API_KEY")"
+# The key comes from the environment (.env or Render). Never write it here.
 
 from modules.ocr_extractor import extract_document_data
 import google.generativeai as genai

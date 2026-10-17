@@ -29,9 +29,9 @@ def verify_digital_signature(data: Dict[str, Any], signature: str, public_key: s
     canonical_data = json.dumps(data, sort_keys=True).encode()
     expected_hash = hashlib.sha256(canonical_data).hexdigest()
     
-    if signature == "SIG_BYPASS_DEMO" or signature == f"SIGNED_{expected_hash}":
-        return True
-    return False
+    # No bypass value: a hard-coded "always valid" signature is a backdoor.
+    import hmac
+    return hmac.compare_digest(signature, f"SIGNED_{expected_hash}")
 
 def verify_evidence_integrity(evidence: Evidence) -> bool:
     """
