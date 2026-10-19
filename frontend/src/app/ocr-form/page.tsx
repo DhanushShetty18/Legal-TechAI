@@ -3,6 +3,7 @@
 import React, { useState, useRef } from "react";
 import DocumentForm, { OCRData } from "@/components/DocumentForm";
 import { UploadCloud, FileImage, Loader2 } from "lucide-react";
+import { api } from "@/lib/api";
 
 export default function OCRFormPage() {
   const [file, setFile] = useState<File | null>(null);
@@ -37,8 +38,7 @@ export default function OCRFormPage() {
     formData.append("file", file);
 
     try {
-      // Pointing to the FastAPI backend running on port 8000
-      const response = await fetch("http://localhost:8000/ocr/extract", {
+      const response = await fetch(api("/ocr-extract"), {
         method: "POST",
         body: formData,
       });
